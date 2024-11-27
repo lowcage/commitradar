@@ -9,11 +9,17 @@
             <div class="border"></div>
 
             <div id="main">
-                <input placeholder="Paste the link of the repository..." type="text" name="text" class="input" />
+                <input
+                    v-model="repositoryUrl"
+                    @keydown.enter="handleInput"
+                    placeholder="Paste the link of the repository..."
+                    type="text"
+                    class="input"
+                />
                 <div id="input-mask"></div>
                 <div id="pink-mask"></div>
                 <div class="filterBorder"></div>
-                <div id="filter-icon" @click="console.log('Searching')">
+                <div id="filter-icon"  @click="handleInput">
                     <svg
                         height="96"
                         width="98"
@@ -63,6 +69,29 @@
 <script>
 export default {
     name: "CustomInput",
+    data() {
+        return {
+            repositoryUrl: '', // Holds the user input
+        };
+    },
+    methods: {
+        handleInput() {
+            if (this.validateUrl(this.repositoryUrl)) {
+                // Redirect to GitHub if validation succeeds
+                window.location.href = '/github/redirect';
+            } else {
+                // Show an alert if validation fails (replace with better UX later)
+                this.notificationHandler('Invalid repository URL. Please try again.');
+            }
+        },
+        validateUrl(url) {
+            // Basic validation for demonstration (replace with actual rules)
+            return url.startsWith('http://') || url.startsWith('https://');
+        },
+    },
+    props: {
+        notificationHandler: Function, // Prop to trigger the parent's notification
+    },
 };
 </script>
 
@@ -94,6 +123,7 @@ export default {
     display: flex;
     align-items: center;
     justify-content: center;
+    user-select: none;
 }
 .input::placeholder {
     color: #c0b9c0;

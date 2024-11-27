@@ -9,11 +9,36 @@ export default {
     data() {
         return {
             showSettings: false,
+            showNotification: false,
+            notificationMessage: "",
         };
     },
     methods: {
         toggleSettings() {
             this.showSettings = !this.showSettings;
+        },
+        triggerNotification(message) {
+            this.notificationMessage = message;
+            this.showNotification = true;
+
+            // Hide the notification after 5 seconds
+            setTimeout(() => {
+                this.showNotification = false;
+                this.notificationMessage = '';
+            }, 3000);
+        },
+    },
+    props: {
+        flash: {
+            type: Object,
+            default: () => ({}),
+        },
+    },
+    mounted() {
+        if (this.flash.auth_error) {
+            setTimeout(() => {
+                this.triggerNotification(this.flash.auth_error)
+            }, 500);
         }
     },
 };
@@ -29,8 +54,13 @@ export default {
             <div class="circle circle1"></div>
             <div class="circle circle2"></div>
         </div>
-
-        <!-- Overlay Container for other content -->
+        <!-- Notification Bar -->
+        <transition name="slide-down">
+            <div v-if="showNotification" class="notification-bar">
+                {{ notificationMessage }}
+            </div>
+        </transition>
+        <!-- Overlay Container  -->
         <div class="overlay">
             <p class="title-text">
                     CommitRad
@@ -43,7 +73,7 @@ export default {
                     </span>
                     r
                 </p>
-            <CustomInput style="padding-bottom: 25px"/>
+            <CustomInput :notificationHandler="triggerNotification" style="padding-bottom: 25px"/>
             <!-- Show/Hide Settings Button -->
             <div class="settings-wrapper" @click="toggleSettings">
                 <div class="settings-text-container">
@@ -73,6 +103,39 @@ export default {
 
 
 <style scoped>
+
+.notification-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background-color: #6c5ce7;
+    color: #fdfbd4;
+    padding: 15px;
+    text-align: center;
+    font-size: 16px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+}
+
+/* Animation for sliding down */
+.slide-down-enter-active,
+.slide-down-leave-active {
+    transform: translateY(-100%);
+    transition: transform 0.5s ease; /* Smooth animation */
+}
+
+.slide-down-enter-to {
+    transform: translateY(0); /* End in view */
+}
+
+.slide-down-leave-active {
+    transition: transform 0.5s ease; /* Smooth slide out */
+}
+
+.slide-down-leave-to {
+    transform: translateY(-100%); /* Exit off-screen */
+}
 
 .settings-wrapper {
     display: flex;
@@ -114,8 +177,9 @@ export default {
 .settings-label {
     position: absolute;
     width: 100%;
-    text-align: center;
+    text-align: right;
     cursor: pointer;
+    user-select: none;
 }
 
 /* Placeholder with fixed height to avoid jumps */
@@ -175,6 +239,7 @@ export default {
     padding-bottom: 10px;
     display: flex;
     align-items: center;
+    user-select: none;
 }
 
 .radar-icon {

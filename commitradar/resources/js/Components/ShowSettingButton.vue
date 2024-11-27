@@ -51,7 +51,7 @@ export default {
 } */
 
 #checkbox:checked + .toggle #bar2 {
-    transform: translateY(4px) rotate(60deg);
+    transform: translateY(5px) rotate(60deg);
     margin-left: 0;
     transform-origin: right;
     transition-duration: .3s;
@@ -59,7 +59,7 @@ export default {
 }
 
 #checkbox:checked + .toggle #bar1 {
-    transform: translateY(11px) rotate(-60deg);
+    transform: translateY(12px) rotate(-60deg);
     transition-duration: .3s;
     transform-origin: left;
     z-index: 1;
@@ -69,7 +69,7 @@ export default {
     transform: rotate(180deg);
 }
 #checkbox:checked + .toggle #bar3 {
-  transform: translateY(-3px) rotate(0deg);
+  transform: translateY(-2px) rotate(0deg);
   transition-duration: .3s;
   transform-origin:right;
 }
