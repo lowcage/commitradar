@@ -22,11 +22,15 @@ Route::get('/', function () {
     return Inertia::render('Index');
 });
 
-Route::get('/github/redirect', function () {
-    // Redirect to GitHub for authentication
-    return Socialite::driver('github')
-        ->scopes(['repo', 'read:org'])
-        ->redirect();
+Route::get('/github/redirect', function (Illuminate\Http\Request $request) {
+    $token = session('github_token');
+    $repositoryUrl = $request->input('repository_url');
+    if(!$token) {
+        // Without token redirect to GitHub for authentication
+        return Socialite::driver('github')
+            ->scopes(['repo', 'read:org'])
+            ->redirect();
+    }
 })->name('github.redirect');
 
 Route::get('/github/callback', function (Request $request) {

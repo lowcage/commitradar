@@ -83,7 +83,7 @@ export default {
                 console.log('Attempting Inertia.post to /github/repository');
 
                 // Post the repository URL to the backend for processing
-                Inertia.post('/github/repository', {
+                Inertia.post('/github/redirect', {
                     repository_url: this.repositoryUrl,
                 });
             } else {
