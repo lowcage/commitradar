@@ -35,9 +35,7 @@ Route::get('/github/callback', function (Request $request) {
         session(['github_token' => $user->token]);
 
         // Render the RepositoryPage if authentication is successful
-        return Inertia::render('RepositoryPage', [
-            'token' => $user->token,
-        ]);
+        return Inertia::render('Index');
     } catch (\Exception $e) {
         // Handle 401 or other exceptions and redirect back to the index
         return redirect('/')
