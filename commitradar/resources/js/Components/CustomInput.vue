@@ -67,6 +67,8 @@
 </template>
 
 <script>
+import { router as Inertia } from '@inertiajs/vue3';
+
 export default {
     name: "CustomInput",
     data() {
@@ -77,16 +79,22 @@ export default {
     methods: {
         handleInput() {
             if (this.validateUrl(this.repositoryUrl)) {
-                // Redirect to GitHub if validation succeeds
-                window.location.href = '/github/redirect';
+                console.log('Valid URL:', this.repositoryUrl);
+                console.log('Attempting Inertia.post to /github/repository');
+
+                // Post the repository URL to the backend for processing
+                Inertia.post('/github/repository', {
+                    repository_url: this.repositoryUrl,
+                });
             } else {
-                // Show an alert if validation fails (replace with better UX later)
+                // Trigger the parent's notification if URL is invalid
                 this.notificationHandler('Invalid repository URL. Please try again.');
             }
         },
         validateUrl(url) {
-            // Basic validation for demonstration (replace with actual rules)
-            return url.startsWith('http://') || url.startsWith('https://');
+            // Basic validation to check for a valid GitHub repository URL
+            const githubRepoPattern = /^https?:\/\/github\.com\/[^\/]+\/[^\/]+$/;
+            return githubRepoPattern.test(url);
         },
     },
     props: {
@@ -94,6 +102,7 @@ export default {
     },
 };
 </script>
+
 
 <style scoped>
 .white, .border, .darkBorderBg, .glow {
