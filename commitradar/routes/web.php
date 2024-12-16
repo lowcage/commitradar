@@ -19,34 +19,64 @@ use Laravel\Socialite\Facades\Socialite;
 */
 
 Route::get('/', function () {
+    //dd(session('github_token'));
     return Inertia::render('Index');
 });
 
 Route::get('/github/redirect', function (Illuminate\Http\Request $request) {
     $token = session('github_token');
-    $repositoryUrl = $request->input('repository_url');
-    if(!$token) {
-        // Without token redirect to GitHub for authentication
+    $owner = $request->input('owner');
+    $repo = $request->input('repo');
+
+    if (!$owner || !$repo) {
+        return redirect('/')
+            ->with('auth_error', 'Missing owner or repository name.');
+    }
+
+    if (!$token) {
+        // Store owner and repo in session for use after authentication
+        session(['owner' => $owner, 'repo' => $repo]);
+
+        // Redirect to GitHub for authentication
         return Socialite::driver('github')
             ->scopes(['repo', 'read:org'])
             ->redirect();
     }
+
+    // If token exists, directly redirect to github.repository
+    return redirect()->route('github.repository', compact('owner', 'repo'));
 })->name('github.redirect');
 
-Route::get('/github/callback', function (Request $request) {
+Route::get('/github/callback', function () {
     try {
         $user = Socialite::driver('github')->user();
         session(['github_token' => $user->token]);
 
-        // Render the RepositoryPage if authentication is successful
-        return Inertia::render('Index');
+        // Retrieve owner and repo from session
+        $owner = session('owner');
+        $repo = session('repo');
+
+        // Ensure owner and repo exist
+        if (!$owner || !$repo) {
+            return redirect('/')
+                ->with('auth_error', 'Missing owner or repository name after authentication.');
+        }
+
+        // Clear owner and repo from session
+        session()->forget(['owner', 'repo']);
+
+        // Redirect to the github.repository route with the owner and repo
+        return redirect()->route('github.repository', compact('owner', 'repo'));
     } catch (\Exception $e) {
-        // Handle 401 or other exceptions and redirect back to the index
+        // Handle authentication failure
         return redirect('/')
             ->with('auth_error', 'Authentication failed or was canceled.');
     }
 })->name('github.callback');
 
+
+
+//Purely for testing should not be in prod
 Route::get('/github/logout', function () {
     // Remove the github_token from the session
     session()->forget('github_token');
@@ -55,33 +85,24 @@ Route::get('/github/logout', function () {
     return redirect('/')->with('success', 'You have been logged out of GitHub.');
 })->name('github.logout');
 
-Route::post('/github/repository', function (Illuminate\Http\Request $request) {
+Route::match(['GET', 'POST'], '/github/repository', function (Illuminate\Http\Request $request) {
     $token = session('github_token');
-    $repositoryUrl = $request->input('repository_url');
+    $owner = $request->input('owner');
+    $repo = $request->input('repo');
 
     if (!$token) {
         return redirect('/')
             ->with('auth_error', 'No GitHub token found. Please authenticate first.');
     }
 
-    // Remove .git suffix if it exists
-    if (str_ends_with($repositoryUrl, '.git')) {
-        $repositoryUrl = substr($repositoryUrl, 0, -4);
-    }
-
-    // Extract owner and repo from the inputted URL
-    preg_match('/github\.com\/([^\/]+)\/([^\/]+)/', $repositoryUrl, $matches);
-
-    if (count($matches) < 3) {
+    if (!$owner || !$repo) {
         return redirect('/')
-            ->with('auth_error', 'Invalid repository URL.');
+            ->with('auth_error', 'Missing owner or repository name.');
     }
-
-    $owner = $matches[1];
-    $repo = $matches[2];
 
     // Make the GitHub API call
     $response = Http::withToken($token)->get("https://api.github.com/repos/$owner/$repo");
+
     if ($response->failed()) {
         return redirect('/')
             ->with('auth_error', 'Failed to retrieve repository data.');
@@ -95,5 +116,7 @@ Route::post('/github/repository', function (Illuminate\Http\Request $request) {
         'repository' => $repositoryData,
     ]);
 })->name('github.repository');
+
+
 
 require __DIR__.'/auth.php';

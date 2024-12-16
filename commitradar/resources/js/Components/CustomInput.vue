@@ -67,8 +67,6 @@
 </template>
 
 <script>
-import { router as Inertia } from '@inertiajs/vue3';
-
 export default {
     name: "CustomInput",
     data() {
@@ -79,13 +77,18 @@ export default {
     methods: {
         handleInput() {
             if (this.validateUrl(this.repositoryUrl)) {
-                console.log('Valid URL:', this.repositoryUrl);
-                console.log('Attempting Inertia.post to /github/repository');
+                // Extract owner and repo from the repository URL
+                const { owner, repo } = this.extractOwnerAndRepo(this.repositoryUrl);
 
-                // Post the repository URL to the backend for processing
-                Inertia.post('/github/redirect', {
-                    repository_url: this.repositoryUrl,
-                });
+                if (owner && repo) {
+                    console.log('Valid owner and repo:', owner, repo);
+                    console.log('Redirecting to /github/redirect with owner and repo');
+
+                    // Perform a hard redirect to /github/redirect with owner and repo as query parameters
+                    window.location.href = `/github/redirect?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}`;
+                } else {
+                    this.notificationHandler('Invalid repository URL. Could not extract owner and repo.');
+                }
             } else {
                 // Trigger the parent's notification if URL is invalid
                 this.notificationHandler('Invalid repository URL. Please try again.');
@@ -96,12 +99,21 @@ export default {
             const githubRepoPattern = /^https?:\/\/github\.com\/[^\/]+\/[^\/]+$/;
             return githubRepoPattern.test(url);
         },
+        extractOwnerAndRepo(url) {
+            // Extract owner and repo from a valid GitHub repository URL using a regex
+            const match = url.match(/^https?:\/\/github\.com\/([^\/]+)\/([^\/]+)/);
+            if (match && match.length === 3) {
+                return { owner: match[1], repo: match[2].replace(/\.git$/, '') }; // Remove .git if it exists
+            }
+            return { owner: null, repo: null };
+        },
     },
     props: {
         notificationHandler: Function, // Prop to trigger the parent's notification
     },
 };
 </script>
+
 
 
 <style scoped>
