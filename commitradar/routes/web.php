@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Laravel\Socialite\Facades\Socialite;
+use Illuminate\Support\Facades\Cache;
 
 /*
 |--------------------------------------------------------------------------
@@ -19,8 +20,11 @@ use Laravel\Socialite\Facades\Socialite;
 */
 
 Route::get('/', function () {
-    //dd(session('github_token'));
     return Inertia::render('Index');
+})->name('index');
+
+Route::get('/index', function () {
+    return redirect()->route('index');
 });
 
 Route::get('/github/redirect', function (Illuminate\Http\Request $request) {
@@ -91,29 +95,90 @@ Route::match(['GET', 'POST'], '/github/repository', function (Illuminate\Http\Re
     $repo = $request->input('repo');
 
     if (!$token) {
-        return redirect('/')
-            ->with('auth_error', 'No GitHub token found. Please authenticate first.');
+        return redirect('/')->with('auth_error', 'No GitHub token found. Please authenticate first.');
     }
 
     if (!$owner || !$repo) {
-        return redirect('/')
-            ->with('auth_error', 'Missing owner or repository name.');
+        return redirect('/')->with('auth_error', 'Missing owner or repository name.');
     }
 
-    // Make the GitHub API call
+    // Get repository data
     $response = Http::withToken($token)->get("https://api.github.com/repos/$owner/$repo");
-
     if ($response->failed()) {
-        return redirect('/')
-            ->with('auth_error', 'Failed to retrieve repository data.');
+        return redirect('/')->with('auth_error', 'Failed to retrieve repository data.');
     }
-
     $repositoryData = $response->json();
 
-    // Render the RepositoryPage with data
+    // Get contributors
+    $contributorsResponse = Http::withToken($token)->get("https://api.github.com/repos/$owner/$repo/contributors");
+    if ($contributorsResponse->failed()) {
+        return redirect('/')->with('auth_error', 'Failed to retrieve contributors data.');
+    }
+    $contributors = $contributorsResponse->json();
+
+    // Initialize stats
+    foreach ($contributors as &$contributor) {
+        $contributor['total_additions'] = 0;
+        $contributor['total_deletions'] = 0;
+    }
+
+    // Get only the last 100 commits with stats
+    $commitsResponse = Http::withToken($token)
+        ->get("https://api.github.com/repos/$owner/$repo/commits", [
+            'per_page' => 100,
+            'page' => 1
+        ]);
+    
+    if ($commitsResponse->successful()) {
+        $commits = $commitsResponse->json();
+        
+        // Process commits in batches of 5 to avoid timeout
+        $batchSize = 5;
+        $batches = array_chunk($commits, $batchSize);
+        
+        foreach ($batches as $batch) {
+            foreach ($batch as $commit) {
+                $detailedCommitResponse = Http::withToken($token)
+                    ->get("https://api.github.com/repos/$owner/$repo/commits/{$commit['sha']}");
+                
+                if ($detailedCommitResponse->successful()) {
+                    $detailedCommit = $detailedCommitResponse->json();
+                    $authorLogin = $detailedCommit['author']['login'] ?? null;
+                    
+                    if ($authorLogin) {
+                        foreach ($contributors as &$contributor) {
+                            if ($contributor['login'] === $authorLogin) {
+                                $contributor['total_additions'] += $detailedCommit['stats']['additions'] ?? 0;
+                                $contributor['total_deletions'] += $detailedCommit['stats']['deletions'] ?? 0;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Add a small delay between batches to prevent rate limiting
+            usleep(100000); // 100ms delay
+        }
+    }
+
+    // Get closed issues count
+    $closedIssuesResponse = Http::withToken($token)
+        ->get("https://api.github.com/search/issues", [
+            'q' => "repo:$owner/$repo is:issue is:closed",
+            'per_page' => 1
+        ]);
+    
+    if ($closedIssuesResponse->successful()) {
+        $searchResult = $closedIssuesResponse->json();
+        $repositoryData['closed_issues_count'] = $searchResult['total_count'];
+    }
+
     return Inertia::render('RepositoryPage', [
         'token' => $token,
         'repository' => $repositoryData,
+        'contributors' => $contributors,
+        'commits' => array_slice($commits, 0, 50), // Keep last 50 commits for display
     ]);
 })->name('github.repository');
 
