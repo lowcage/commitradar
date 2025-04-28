@@ -65,6 +65,12 @@
                                 <span class="stat-label">Closed Issues</span>
                             </div>
                         </div>
+                        <div class="stat-row">
+                            <div class="stat-item">
+                                <span class="stat-value">{{ totalCommits }}</span>
+                                <span class="stat-label">Total Commits (Top Contributors)</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -102,57 +108,101 @@
             </div>
         </div>
 
-        <h2 class="section-title">Contributors</h2>
-        <div class="contributors-list">
-            <div v-for="contributor in contributors" :key="contributor.id" class="contributor-card">
-                <img :src="contributor.avatar_url" :alt="contributor.login" class="contributor-avatar">
-                <div class="contributor-info">
-                    <a :href="contributor.html_url" target="_blank" class="contributor-name">{{ contributor.login }}</a>
-                    <span class="contributions">{{ contributor.contributions }} commits</span>
-                    <div class="contributor-stats">
-                        <span class="additions">+{{ contributor.total_additions }}</span>
-                        <span class="deletions">-{{ contributor.total_deletions }}</span>
+        <div class="contributors-section">
+            <div class="info-card">
+                <div class="info-header">
+                    <h3>Contributors</h3>
+                </div>
+                <div class="info-content">
+                    <div class="contributors-list">
+                        <div v-for="contributor in contributors" :key="contributor.id" class="contributor-card">
+                            <img :src="contributor.avatar_url" :alt="contributor.login" class="contributor-avatar">
+                            <div class="contributor-info">
+                                <a :href="contributor.html_url" target="_blank" class="contributor-name">{{ contributor.login }}</a>
+                                <span class="contributions">{{ contributor.contributions }} commits</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="contributor-notes">
+                        <p class="info-note">
+                            Note: Only main contributors are listed here. Some commits might belong to other authors.
+                        </p>
+                        <p v-if="allCommits.length > totalCommits" class="info-note info-warning">
+                            ⚠️ Discrepancy detected: More commits found than contributors' total.
+                            <br>
+                            This happens when commits are authored by users not officially listed as contributors by GitHub.
+                        </p>
                     </div>
                 </div>
             </div>
         </div>
 
-        <h2 class="section-title">Commit History</h2>
-        <div class="commits-slider">
-            <div class="commits-track">
-                <div v-for="commit in commits" :key="commit.sha" class="commit-card">
-                    <div class="commit-header">
-                        <img 
-                            :src="commit.author?.avatar_url" 
-                            :alt="commit.author?.login || commit.commit.author.name"
-                            class="commit-avatar"
-                        >
-                        <div class="commit-author">
-                            <span class="author-name">{{ commit.author?.login || commit.commit.author.name }}</span>
-                            <span class="commit-date">{{ formatDate(commit.commit.author.date) }}</span>
+
+
+        <div class="info-card">
+            <div class="info-header">
+                <h3>Recent {{ allCommits.length }} Commits</h3>
+            </div>
+            <div class="info-content">
+                <div class="commits-slider">
+                    <div class="commits-track">
+                        <div v-for="commit in allCommits" :key="commit.sha" class="commit-card">
+                            <div class="commit-header">
+                                <img
+                                    :src="commit.author?.avatar_url"
+                                    :alt="commit.author?.login || commit.commit.author.name"
+                                    class="commit-avatar"
+                                >
+                                <div class="commit-author">
+                                    <span class="author-name">{{ commit.author?.login || commit.commit.author.name }}</span>
+                                    <span class="commit-date">{{ formatDate(commit.commit.author.date) }}</span>
+                                </div>
+                            </div>
+                            <div class="commit-message">{{ commit.commit.message }}</div>
+                            <div class="commit-sha">
+                                <a :href="commit.html_url" target="_blank" class="sha-link">
+                                    {{ commit.sha.substring(0, 7) }}
+                                </a>
+                            </div>
                         </div>
                     </div>
-                    <div class="commit-message">{{ commit.commit.message }}</div>
-                    <div class="commit-stats">
-                        <span class="additions">+{{ commit.stats?.additions || 0 }}</span>
-                        <span class="deletions">-{{ commit.stats?.deletions || 0 }}</span>
-                    </div>
-                    <div class="commit-sha">
-                        <a :href="commit.html_url" target="_blank" class="sha-link">
-                            {{ commit.sha.substring(0, 7) }}
-                        </a>
-                    </div>
+                </div>
+
+                <div class="load-more-container">
+                    <button
+                        v-if="!noMoreCommits"
+                        @click="loadMoreCommits"
+                        class="load-more-button"
+                        :disabled="loadingMore"
+                    >
+                        {{ loadingMore ? 'Loading...' : 'Load More Commits' }}
+                    </button>
+                    <p v-else class="no-more-text">No more commits available.</p>
                 </div>
             </div>
         </div>
+
+        <CommitActivityChart :activity="commitActivity" />
     </div>
 </template>
 
 <script>
 import { Link } from '@inertiajs/vue3';
+import CommitActivityChart from "@/Components/CommitActivityChart.vue";
 
 export default {
+    data() {
+        return {
+            page: 2, // 1-et már lekértünk backendről
+            allCommits: [...this.commits],
+            loadingMore: false,
+            noMoreCommits: false,
+        };
+    },
+
     components: {
+        CommitActivityChart,
         Link,
     },
     props: {
@@ -172,8 +222,64 @@ export default {
             type: Array,
             required: true,
         },
+        totalCommits: {
+            type: Number,
+            required: true
+        },
+        commitActivity: {
+            type: Array,
+            required: true,
+        },
+        owner: { type: String, required: true },
+        repo: { type: String, required: true },
     },
     methods: {
+        async loadMoreCommits() {
+            if (this.loadingMore || this.noMoreCommits) return;
+
+            this.loadingMore = true;
+            try {
+                const response = await fetch(`https://api.github.com/repos/${this.owner}/${this.repo}/commits?per_page=50&page=${this.page}`, {
+                    headers: {
+                        Authorization: `Bearer ${this.token}`,
+                        Accept: 'application/vnd.github.v3+json',
+                    }
+                });
+
+                if (response.ok) {
+                    const newCommits = await response.json();
+
+                    if (newCommits.length === 0) {
+                        this.noMoreCommits = true;
+                    } else {
+                        this.allCommits.push(...newCommits.map(commit => ({
+                            sha: commit.sha,
+                            html_url: commit.html_url,
+                            commit: {
+                                author: {
+                                    name: commit.commit.author.name,
+                                    date: commit.commit.author.date,
+                                },
+                                message: commit.commit.message,
+                            },
+                            author: commit.author ? {
+                                login: commit.author.login,
+                                avatar_url: commit.author.avatar_url,
+                            } : null,
+                        })));
+                        this.page++;
+                    }
+                } else {
+                    console.error('Failed to load more commits');
+                    this.noMoreCommits = true;
+                }
+            } catch (error) {
+                console.error('Error fetching commits:', error);
+                this.noMoreCommits = true;
+            } finally {
+                this.loadingMore = false;
+            }
+        },
         formatDate(dateString) {
             const options = { year: 'numeric', month: 'long', day: 'numeric' };
             return new Date(dateString).toLocaleDateString(undefined, options);
@@ -231,7 +337,7 @@ html, body {
 }
 
 .repo-name {
-    color: #60A5FA; /* Light blue color */
+    color: #60A5FA;
     font-style: italic;
 }
 
@@ -242,7 +348,7 @@ html, body {
     margin-bottom: 2rem;
 }
 
-.info-card, .contributor-card, .commit-card {
+.info-card, .contributor-card {
     background: white;
     border-radius: 12px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
@@ -298,11 +404,11 @@ html, body {
 }
 
 .stat-row:first-child {
-    grid-template-columns: repeat(3, 1fr);  /* Three columns for stars, forks, watchers */
+    grid-template-columns: repeat(3, 1fr);
 }
 
 .stat-row:last-child {
-    grid-template-columns: repeat(2, 1fr);  /* Two columns for open/closed issues */
+    grid-template-columns: repeat(2, 1fr);
 }
 
 .stat-item {
@@ -320,23 +426,23 @@ html, body {
 }
 
 .stat-stars {
-    color: #EAB308; /* Yellow */
+    color: #EAB308;
 }
 
 .stat-forks {
-    color: #60A5FA; /* Light blue */
+    color: #60A5FA;
 }
 
 .stat-watchers {
-    color: #2563eb; /* Original blue */
+    color: #2563eb;
 }
 
 .stat-open-issues {
-    color: #22C55E; /* Green */
+    color: #22C55E;
 }
 
 .stat-closed-issues {
-    color: #EF4444; /* Red */
+    color: #EF4444;
 }
 
 .stat-label {
@@ -404,17 +510,11 @@ html, body {
     }
 }
 
-.section-title {
-    font-size: 1.5rem;
-    font-weight: 600;
-    color: white;
-    margin: 2rem 0 1rem;
-}
-
 .commits-slider {
     width: 100%;
     overflow-x: auto;
     padding: 1rem 0;
+    scroll-behavior: smooth;
 }
 
 .commits-track {
@@ -424,12 +524,33 @@ html, body {
 }
 
 .commit-card {
-    flex: 0 0 300px;
+    flex: 0 0 280px;
     background: white;
-    border-radius: 8px;
-    padding: 1rem;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    border-radius: 12px;
+    padding: 1.25rem;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    transition: transform 0.2s;
 }
+
+.commit-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+}
+
+.commits-slider::-webkit-scrollbar {
+    height: 8px;
+}
+
+.commits-slider::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 4px;
+}
+
+.commits-slider::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+
 
 .commit-header {
     display: flex;
@@ -470,20 +591,12 @@ html, body {
     overflow: hidden;
 }
 
-.commit-stats {
-    display: flex;
-    gap: 1rem;
-    margin-bottom: 0.5rem;
-    font-family: monospace;
-    font-size: 0.875rem;
-}
-
 .additions {
-    color: #22C55E; /* Green */
+    color: #22C55E;
 }
 
 .deletions {
-    color: #EF4444; /* Red */
+    color: #EF4444;
 }
 
 .commit-sha {
@@ -500,26 +613,6 @@ html, body {
     text-decoration: underline;
 }
 
-/* Add smooth scrolling */
-.commits-slider {
-    scrollbar-width: thin;
-    scrollbar-color: #cbd5e1 #f1f5f9;
-}
-
-.commits-slider::-webkit-scrollbar {
-    height: 6px;
-}
-
-.commits-slider::-webkit-scrollbar-track {
-    background: #f1f5f9;
-    border-radius: 3px;
-}
-
-.commits-slider::-webkit-scrollbar-thumb {
-    background-color: #cbd5e1;
-    border-radius: 3px;
-}
-
 .contributor-stats {
     display: flex;
     gap: 0.75rem;
@@ -527,4 +620,60 @@ html, body {
     font-family: monospace;
     font-size: 0.875rem;
 }
+
+.load-more-container {
+    text-align: center;
+    margin-top: 1.5rem;
+}
+
+.load-more-button {
+    background-color: #2563eb;
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.load-more-button:hover {
+    background-color: #1e40af;
+}
+
+.contributors-section {
+    margin-bottom: 2rem;
+}
+
+.contributor-notes {
+    margin-top: 2rem;
+    border-top: 1px solid #e5e7eb;
+    padding-top: 1rem;
+}
+
+.info-note {
+    font-size: 0.875rem;
+    color: #6b7280;
+    margin-bottom: 0.75rem;
+    line-height: 1.4;
+}
+
+.info-warning {
+    color: #dc2626;
+    font-weight: 600;
+}
+
+.no-more-text {
+    color: #22C55E;
+    font-size: 1rem;
+    font-weight: 600;
+    margin-top: 1rem;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    background: rgba(34, 197, 94, 0.1);
+    display: inline-block;
+}
+
+
 </style>

@@ -116,49 +116,41 @@ Route::match(['GET', 'POST'], '/github/repository', function (Illuminate\Http\Re
     }
     $contributors = $contributorsResponse->json();
 
-    // Initialize stats
+    // Initialize stats, but we won't aggregate additions/deletions now
     foreach ($contributors as &$contributor) {
         $contributor['total_additions'] = 0;
         $contributor['total_deletions'] = 0;
     }
 
-    // Get only the last 100 commits with stats
+    // Get only the last 50 commits without fetching detailed stats
     $commitsResponse = Http::withToken($token)
         ->get("https://api.github.com/repos/$owner/$repo/commits", [
-            'per_page' => 100,
+            'per_page' => 50,
             'page' => 1
         ]);
-    
+
+    $commits = [];
     if ($commitsResponse->successful()) {
-        $commits = $commitsResponse->json();
-        
-        // Process commits in batches of 5 to avoid timeout
-        $batchSize = 5;
-        $batches = array_chunk($commits, $batchSize);
-        
-        foreach ($batches as $batch) {
-            foreach ($batch as $commit) {
-                $detailedCommitResponse = Http::withToken($token)
-                    ->get("https://api.github.com/repos/$owner/$repo/commits/{$commit['sha']}");
-                
-                if ($detailedCommitResponse->successful()) {
-                    $detailedCommit = $detailedCommitResponse->json();
-                    $authorLogin = $detailedCommit['author']['login'] ?? null;
-                    
-                    if ($authorLogin) {
-                        foreach ($contributors as &$contributor) {
-                            if ($contributor['login'] === $authorLogin) {
-                                $contributor['total_additions'] += $detailedCommit['stats']['additions'] ?? 0;
-                                $contributor['total_deletions'] += $detailedCommit['stats']['deletions'] ?? 0;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // Add a small delay between batches to prevent rate limiting
-            usleep(100000); // 100ms delay
+        $commitsRaw = $commitsResponse->json();
+
+        // From the basic commit list we extract the needed data
+        foreach ($commitsRaw as $commit) {
+            $commits[] = [
+                'sha' => $commit['sha'],
+                'html_url' => $commit['html_url'],
+                'commit' => [
+                    'author' => [
+                        'name' => $commit['commit']['author']['name'],
+                        'date' => $commit['commit']['author']['date'],
+                    ],
+                    'message' => $commit['commit']['message'],
+                ],
+                'author' => $commit['author'] ? [
+                    'login' => $commit['author']['login'],
+                    'avatar_url' => $commit['author']['avatar_url'],
+                ] : null,
+                // We skip additions/deletions stats because that needs the /commits/:sha call!
+            ];
         }
     }
 
@@ -168,19 +160,50 @@ Route::match(['GET', 'POST'], '/github/repository', function (Illuminate\Http\Re
             'q' => "repo:$owner/$repo is:issue is:closed",
             'per_page' => 1
         ]);
-    
+
     if ($closedIssuesResponse->successful()) {
         $searchResult = $closedIssuesResponse->json();
         $repositoryData['closed_issues_count'] = $searchResult['total_count'];
     }
 
+    // Get contributors
+    $contributorsResponse = Http::withToken($token)->get("https://api.github.com/repos/$owner/$repo/contributors");
+    if ($contributorsResponse->failed()) {
+        return redirect('/')->with('auth_error', 'Failed to retrieve contributors data.');
+    }
+    $contributors = $contributorsResponse->json();
+
+    // Calculate total commits from contributors
+    $totalCommits = 0;
+    foreach ($contributors as &$contributor) {
+        $contributor['total_additions'] = 0;
+        $contributor['total_deletions'] = 0;
+        $totalCommits += $contributor['contributions'] ?? 0;
+    }
+
+    // Get commit activity (52 weeks)
+    $commitActivityResponse = Http::withToken($token)
+        ->get("https://api.github.com/repos/$owner/$repo/stats/commit_activity");
+
+    $commitActivity = [];
+
+    if ($commitActivityResponse->successful()) {
+        $commitActivity = $commitActivityResponse->json();
+    }
+
+
     return Inertia::render('RepositoryPage', [
         'token' => $token,
         'repository' => $repositoryData,
         'contributors' => $contributors,
-        'commits' => array_slice($commits, 0, 50), // Keep last 50 commits for display
+        'commits' => $commits,
+        'totalCommits' => $totalCommits,
+        'commitActivity' => $commitActivity,
+        'owner' => $owner,
+        'repo' => $repo,
     ]);
 })->name('github.repository');
+
 
 
 
