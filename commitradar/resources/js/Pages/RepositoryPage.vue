@@ -65,7 +65,7 @@
                                 <span class="stat-label">Closed Issues</span>
                             </div>
                         </div>
-                        <div class="stat-row">
+                        <div class="stat-row single-stat-row">
                             <div class="stat-item">
                                 <span class="stat-value">{{ totalCommits }}</span>
                                 <span class="stat-label">Total Commits (Top Contributors)</span>
@@ -115,11 +115,53 @@
                 </div>
                 <div class="info-content">
                     <div class="contributors-list">
-                        <div v-for="contributor in contributors" :key="contributor.id" class="contributor-card">
-                            <img :src="contributor.avatar_url" :alt="contributor.login" class="contributor-avatar">
-                            <div class="contributor-info">
+                        <div
+                            v-for="contributor in contributors"
+                            :key="contributor.id"
+                            class="contributor-stats-card"
+                        >
+                            <!-- Kép + név -->
+                            <div class="contributor-header">
+                                <img :src="contributor.avatar_url" :alt="contributor.login" class="contributor-avatar-large" />
                                 <a :href="contributor.html_url" target="_blank" class="contributor-name">{{ contributor.login }}</a>
-                                <span class="contributions">{{ contributor.contributions }} commits</span>
+                            </div>
+
+                            <!-- Commits & lines -->
+                            <div class="contributor-meta">
+                                <span>{{ contributor.contributions }} commits</span>
+                                <span v-if="contributor.filtered_lines_total > 0">
+                {{ contributor.filtered_lines_total }} lines changed
+            </span>
+                            </div>
+
+                            <!-- Dummy stat grid -->
+                            <div class="contributor-stat-grid">
+                                <div class="stat-box">
+                                    <div class="stat-value">5.3</div>
+                                    <div class="stat-label">Avg. Commit Score</div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-value">87</div>
+                                    <div class="stat-label">Lines/Day</div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-value">12</div>
+                                    <div class="stat-label">Active Days</div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-value">21</div>
+                                    <div class="stat-label">Above Baseline</div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-value">9%</div>
+                                    <div class="stat-label">Of All Commits</div>
+                                </div>
+                            </div>
+
+                            <!-- Final usefulness score -->
+                            <div class="contributor-final-score">
+                                <span class="score-label">Usefulness Score:</span>
+                                <span class="score-value">7.8 / 10</span>
                             </div>
                         </div>
                     </div>
@@ -138,16 +180,28 @@
             </div>
         </div>
 
-
-
         <div class="info-card">
             <div class="info-header">
+                <p v-if="Object.keys(detailedCommits).length === 0" class="commit-note">
+                    ℹ️ Showing basic commit info. Detailed stats (additions/deletions) not loaded.
+                </p>
                 <h3>Recent {{ allCommits.length }} Commits</h3>
+                <div class="baseline-control">
+                    <label for="baseline-slider">Baseline: {{ baseline }} lines</label>
+                    <input
+                        id="baseline-slider"
+                        type="range"
+                        min="0"
+                        max="50"
+                        step="1"
+                        v-model="baseline"
+                    />
+                </div>
             </div>
             <div class="info-content">
                 <div class="commits-slider">
                     <div class="commits-track">
-                        <div v-for="commit in allCommits" :key="commit.sha" class="commit-card">
+                        <div v-for="commit in allCommits" :key="commit.sha" class="commit-card" :class="{ 'commit-muted': isBelowBaseline(commit) }">
                             <div class="commit-header">
                                 <img
                                     :src="commit.author?.avatar_url"
@@ -157,6 +211,10 @@
                                 <div class="commit-author">
                                     <span class="author-name">{{ commit.author?.login || commit.commit.author.name }}</span>
                                     <span class="commit-date">{{ formatDate(commit.commit.author.date) }}</span>
+                                </div>
+                                <div class="commit-stats">
+                                    <span class="additions">+{{ commit.stats?.additions || 0 }}</span>
+                                    <span class="deletions">-{{ commit.stats?.deletions || 0 }}</span>
                                 </div>
                             </div>
                             <div class="commit-message">{{ commit.commit.message }}</div>
@@ -168,8 +226,17 @@
                         </div>
                     </div>
                 </div>
+                <div class="load-commits-details-wrapper">
+                    <button
+                        @click="loadAllCommitsAndDetails"
+                        :disabled="loadingMore || loadingDetailed"
+                        class="load-everything-button"
+                    >
+                        {{ loadingDetailed ? `Loading Details... ${detailedProgress}/${allCommits.length}` : 'Load All Commits + Details' }}
+                    </button>
+                </div>
 
-                <div class="load-more-container">
+                <!---<div class="load-more-container">
                     <button
                         v-if="!noMoreCommits"
                         @click="loadMoreCommits"
@@ -179,9 +246,23 @@
                         {{ loadingMore ? 'Loading...' : 'Load More Commits' }}
                     </button>
                     <p v-else class="no-more-text">No more commits available.</p>
-                </div>
+                </div>-->
             </div>
         </div>
+
+        <div class="load-detailed-container">
+            <button
+                v-if="!loadingDetailed"
+                @click="loadAllCommitDetails(5)"
+                class="load-detailed-button"
+            >
+                Load Detailed Commit Stats
+            </button>
+            <div v-else class="detailed-progress">
+                Loading... {{ detailedProgress }}/{{ allCommits.length }}
+            </div>
+        </div>
+
 
         <CommitActivityChart :activity="commitActivity" />
     </div>
@@ -194,10 +275,14 @@ import CommitActivityChart from "@/Components/CommitActivityChart.vue";
 export default {
     data() {
         return {
+            detailedCommits: {}, // sha -> { additions, deletions }
+            loadingDetailed: false,
+            detailedProgress: 0,
             page: 2, // 1-et már lekértünk backendről
             allCommits: [...this.commits],
             loadingMore: false,
             noMoreCommits: false,
+            baseline: 10,
         };
     },
 
@@ -280,11 +365,120 @@ export default {
                 this.loadingMore = false;
             }
         },
+
+        async loadAllCommitDetails(batchSize = 5) {
+            if (this.loadingDetailed) return;
+
+            this.loadingDetailed = true;
+            this.detailedProgress = 0;
+
+            while (true) {
+                const remainingCommits = this.allCommits.filter(c => !this.detailedCommits[c.sha]);
+                const batch = remainingCommits.slice(0, batchSize);
+
+                if (batch.length === 0) break; // vége
+
+                try {
+                    const response = await fetch(route('github.commits.details'), {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                        },
+                        body: JSON.stringify({
+                            owner: this.owner,
+                            repo: this.repo,
+                            shas: batch.map(c => c.sha),
+                        }),
+                    });
+
+                    if (response.ok) {
+                        const detailedBatch = await response.json();
+
+                        detailedBatch.forEach(commit => {
+                            // mentjük külön map-be
+                            this.detailedCommits[commit.sha] = {
+                                additions: commit.additions,
+                                deletions: commit.deletions,
+                            };
+
+                            // és frissítjük az allCommits tömbben is, hogy a UI lássa
+                            const found = this.allCommits.find(c => c.sha === commit.sha);
+                            if (found) {
+                                found.stats = {
+                                    additions: commit.additions,
+                                    deletions: commit.deletions,
+                                };
+                            }
+                        });
+
+                        this.detailedProgress += batch.length;
+                    } else {
+                        console.error('Failed to load commit details');
+                        break;
+                    }
+                } catch (error) {
+                    console.error('Error loading detailed commits', error);
+                    break;
+                }
+
+                await new Promise(resolve => setTimeout(resolve, 300)); // 300ms delay
+            }
+
+            this.loadingDetailed = false;
+            this.calculateFilteredContributorStats();
+        },
+
+        async loadAllCommitsAndDetails() {
+            while (!this.noMoreCommits) {
+                await this.loadMoreCommits();
+            }
+
+            await this.loadAllCommitDetails(5);
+        },
+
         formatDate(dateString) {
             const options = { year: 'numeric', month: 'long', day: 'numeric' };
             return new Date(dateString).toLocaleDateString(undefined, options);
         },
+        commitLines(commit) {
+            const stats = commit.stats;
+            if (!stats) return 0;
+            return stats.additions + Math.abs(stats.deletions);
+        },
+        isBelowBaseline(commit) {
+            return this.commitLines(commit) < this.baseline;
+        },
+
+        calculateFilteredContributorStats() {
+            // nullázás minden meglévő contributorra
+            this.contributors.forEach(contributor => {
+                contributor.filtered_lines_total = 0;
+            });
+
+            // commitokon végigmegyünk
+            this.allCommits.forEach(commit => {
+                const stats = commit.stats;
+                const authorLogin = commit.author?.login;
+
+                if (!stats || !authorLogin) return;
+
+                const lines = stats.additions + Math.abs(stats.deletions);
+                if (lines < this.baseline) return;
+
+                const contributor = this.contributors.find(c => c.login === authorLogin);
+                if (contributor) {
+                    contributor.filtered_lines_total += lines;
+                }
+            });
+        }
+
     },
+    watch: {
+        baseline(newVal) {
+            this.calculateFilteredContributorStats();
+        },
+    }
 };
 </script>
 
@@ -462,10 +656,10 @@ html, body {
 }
 
 .contributors-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 1rem;
-    margin-top: 1rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    justify-content: center;
 }
 
 .contributor-card {
@@ -673,6 +867,141 @@ html, body {
     border-radius: 8px;
     background: rgba(34, 197, 94, 0.1);
     display: inline-block;
+}
+
+.load-detailed-container {
+    text-align: center;
+    margin-top: 1rem;
+}
+
+.load-detailed-button {
+    background-color: #2563eb;
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.detailed-progress {
+    margin-top: 1rem;
+    font-size: 1rem;
+    color: white;
+}
+
+.commit-note {
+    margin-bottom: 1rem;
+    color: #eab308;
+    background-color: rgba(234, 179, 8, 0.1);
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    font-size: 0.95rem;
+}
+
+.load-everything-button {
+    background-color: #2563eb;
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 1rem;
+}
+
+.load-everything-button:disabled {
+    background-color: #94a3b8;
+    cursor: not-allowed;
+}
+
+.commit-muted {
+    opacity: 0.4;
+    filter: grayscale(100%);
+}
+
+.lines-total {
+    font-size: 0.875rem;
+    color: #0f172a;
+    font-weight: 500;
+}
+
+.single-stat-row {
+    grid-template-columns: 1fr !important;
+}
+
+.contributor-stats-card {
+    max-width: 700px;
+    width: 100%;
+    flex: 1 1 420px;
+    margin: 0 auto;
+    padding: 1.25rem;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+
+
+.contributor-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.contributor-avatar-large {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    margin-bottom: 0.5rem;
+}
+
+.contributor-meta {
+    font-size: 0.875rem;
+    color: #4b5563;
+    text-align: center;
+    margin-bottom: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.contributor-stat-grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+
+.stat-box {
+    flex: 1 1 90px;
+    max-width: 120px;
+    background: #f3f4f6;
+    border-radius: 8px;
+    padding: 0.5rem;
+    text-align: center;
+}
+
+
+.stat-value {
+    font-size: 1.1rem;
+    font-weight: bold;
+    color: #111827;
+}
+
+.stat-label {
+    font-size: 0.75rem;
+    color: #6b7280;
+}
+
+.contributor-final-score {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #2563eb;
+    margin-top: 0.25rem;
 }
 
 

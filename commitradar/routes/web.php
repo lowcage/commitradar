@@ -3,6 +3,7 @@
 use App\Http\Controllers\ProfileController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Laravel\Socialite\Facades\Socialite;
@@ -204,7 +205,33 @@ Route::match(['GET', 'POST'], '/github/repository', function (Illuminate\Http\Re
     ]);
 })->name('github.repository');
 
+Route::post('/github/commits/details', function (Request $request) {
+    $token = session('github_token');
+    $owner = $request->input('owner');
+    $repo = $request->input('repo');
+    $shas = $request->input('shas'); // ez egy tömb lesz
 
+    if (!$token || !$owner || !$repo || !is_array($shas)) {
+        return response()->json(['error' => 'Invalid parameters'], 400);
+    }
 
+    $results = [];
+
+    foreach ($shas as $sha) {
+        $response = Http::withToken($token)
+            ->get("https://api.github.com/repos/$owner/$repo/commits/$sha");
+
+        if ($response->successful()) {
+            $commitData = $response->json();
+            $results[] = [
+                'sha' => $sha,
+                'additions' => $commitData['stats']['additions'] ?? 0,
+                'deletions' => $commitData['stats']['deletions'] ?? 0,
+            ];
+        }
+    }
+
+    return response()->json($results);
+})->name('github.commits.details');
 
 require __DIR__.'/auth.php';
