@@ -151,6 +151,10 @@
                                     <div class="stat-label">Avg. Commit Score</div>
                                 </div>
                                 <div class="stat-box">
+                                    <div class="stat-value">9%</div>
+                                    <div class="stat-label">Of All Commits</div>
+                                </div>
+                                <div class="stat-box">
                                     <div class="stat-value">87</div>
                                     <div class="stat-label">Lines/Day</div>
                                 </div>
@@ -159,17 +163,17 @@
                                     <div class="stat-label">Active Days</div>
                                 </div>
                                 <div class="stat-box">
-                                    <div class="stat-value">21</div>
-                                    <div class="stat-label">Above Baseline</div>
+                                    <div class="stat-value">76%</div>
+                                    <div class="stat-label">Commit message quality</div>
                                 </div>
                                 <div class="stat-box">
                                     <div class="stat-value">9%</div>
-                                    <div class="stat-label">Of All Commits</div>
+                                    <div class="stat-label">Churn Rate</div>
                                 </div>
                             </div>
 
                             <div class="contributor-final-score">
-                                <span class="score-label">Usefulness Score:</span>
+                                <span class="score-label">Score: </span>
                                 <span class="score-value">7.8 / 10</span>
                             </div>
                         </div>
@@ -277,11 +281,17 @@
                 @click="loadAllCommitDetails(5)"
                 class="load-detailed-button"
             >
-                Load Detailed Commit Stats
+                Load Details for Recent Commits
             </button>
             <div v-else class="detailed-progress">
                 Loading... {{ detailedProgress }}/{{ allCommits.length }}
             </div>
+        </div>
+
+        <div class="demo-load-buttons">
+            <button @click="loadCommitsSinceMonths(3)">Last 3 Months</button>
+            <button @click="loadCommitsSinceMonths(12)">Last 1 Year</button>
+            <button @click="loadCommitsByCount(1000)">Last 1000 Commits</button>
         </div>
 
         <div class="charts-row">
@@ -521,6 +531,97 @@ export default {
         getContributorColor(login) {
             if (!login) return '#9ca3af'; // szürke fallback
             return this.generateColorFromString(login);
+        },
+        async loadCommitsSinceMonths(months) {
+            this.allCommits = [];
+            this.page = 1;
+            this.noMoreCommits = false;
+
+            const cutoffDate = new Date();
+            cutoffDate.setMonth(cutoffDate.getMonth() - months);
+
+            while (!this.noMoreCommits) {
+                const response = await fetch(`https://api.github.com/repos/${this.owner}/${this.repo}/commits?per_page=50&page=${this.page}`, {
+                    headers: {
+                        Authorization: `Bearer ${this.token}`,
+                        Accept: 'application/vnd.github.v3+json',
+                    }
+                });
+
+                if (!response.ok) break;
+
+                const newCommits = await response.json();
+                if (newCommits.length === 0) {
+                    this.noMoreCommits = true;
+                    break;
+                }
+
+                const filtered = newCommits.filter(c => new Date(c.commit.author.date) > cutoffDate);
+                this.allCommits.push(...filtered.map(commit => ({
+                    sha: commit.sha,
+                    html_url: commit.html_url,
+                    commit: {
+                        author: {
+                            name: commit.commit.author.name,
+                            date: commit.commit.author.date,
+                        },
+                        message: commit.commit.message,
+                    },
+                    author: commit.author ? {
+                        login: commit.author.login,
+                        avatar_url: commit.author.avatar_url,
+                    } : null,
+                })));
+
+                if (filtered.length < newCommits.length) break;
+
+                this.page++;
+            }
+
+            this.chartKey++;
+        },
+
+        async loadCommitsByCount(limit) {
+            this.allCommits = [];
+            this.page = 1;
+            this.noMoreCommits = false;
+
+            while (this.allCommits.length < limit && !this.noMoreCommits) {
+                const response = await fetch(`https://api.github.com/repos/${this.owner}/${this.repo}/commits?per_page=50&page=${this.page}`, {
+                    headers: {
+                        Authorization: `Bearer ${this.token}`,
+                        Accept: 'application/vnd.github.v3+json',
+                    }
+                });
+
+                if (!response.ok) break;
+
+                const newCommits = await response.json();
+                if (newCommits.length === 0) {
+                    this.noMoreCommits = true;
+                    break;
+                }
+
+                this.allCommits.push(...newCommits.map(commit => ({
+                    sha: commit.sha,
+                    html_url: commit.html_url,
+                    commit: {
+                        author: {
+                            name: commit.commit.author.name,
+                            date: commit.commit.author.date,
+                        },
+                        message: commit.commit.message,
+                    },
+                    author: commit.author ? {
+                        login: commit.author.login,
+                        avatar_url: commit.author.avatar_url,
+                    } : null,
+                })));
+
+                this.page++;
+            }
+
+            this.chartKey++;
         }
     },
     watch: {
@@ -1180,6 +1281,7 @@ html, body {
 }
 
 .contributor-final-score {
+    text-align: center;
     font-size: 1rem;
     font-weight: 600;
     color: #2563eb;
@@ -1260,6 +1362,28 @@ html, body {
     flex: 0 0 47%;
     max-width: 47%;
     box-sizing: border-box;
+}
+
+.demo-load-buttons {
+    display: flex;
+    gap: 1rem;
+    margin-top: 2rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.demo-load-buttons button {
+    background-color: #4f46e5;
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    border: none;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.demo-load-buttons button:hover {
+    background-color: #4338ca;
 }
 
 
