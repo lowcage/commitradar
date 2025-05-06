@@ -1,7 +1,7 @@
 <template>
     <div class="info-card">
         <div class="info-header">
-            <h3>Commits Per Week (Loaded Only)</h3>
+            <h3>Lines Changed per Week (Loaded Only)</h3>
         </div>
         <div class="info-content">
             <canvas ref="canvas"></canvas>
@@ -32,25 +32,21 @@ export default {
                     legend: {
                         labels: {
                             color: '#374151',
-                        }
-                    }
+                        },
+                    },
                 },
                 scales: {
                     x: {
                         ticks: { color: '#6b7280' },
-                        grid: {
-                            color: '#e5e7eb',
-                        }
+                        grid: { color: '#e5e7eb' },
                     },
                     y: {
-                        ticks: { color: '#6b7280' },
-                        grid: {
-                            color: '#e5e7eb',
-                        },
                         beginAtZero: true,
-                    }
-                }
-            }
+                        ticks: { color: '#6b7280' },
+                        grid: { color: '#e5e7eb' },
+                    },
+                },
+            },
         });
     },
 };
@@ -63,13 +59,11 @@ export default {
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     margin-top: 2rem;
 }
-
 .info-header {
     background: #f8fafc;
     padding: 1rem 1.5rem;
     border-bottom: 1px solid #e5e7eb;
 }
-
 .info-content {
     padding: 1.5rem;
     height: 400px;

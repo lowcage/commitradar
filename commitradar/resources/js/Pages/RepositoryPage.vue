@@ -113,25 +113,35 @@
                 <div class="info-header">
                     <h3>Contributors</h3>
                 </div>
+
                 <div class="info-content">
                     <div class="contributors-list">
                         <div
                             v-for="contributor in contributors"
                             :key="contributor.id"
                             class="contributor-stats-card"
+                            :class="{ 'contributor-hidden': hiddenContributors.has(contributor.login) }"
                         >
-                            <!-- Kép + név -->
+                            <!-- Hide button -->
+                            <button
+                                class="hide-commits-btn"
+                                @click="toggleContributorVisibility(contributor.login)"
+                            >
+                                {{ hiddenContributors.has(contributor.login) ? 'Show Commits' : 'Hide Commits' }}
+                            </button>
+
+                            <!-- Header -->
                             <div class="contributor-header">
                                 <img :src="contributor.avatar_url" :alt="contributor.login" class="contributor-avatar-large" />
                                 <a :href="contributor.html_url" target="_blank" class="contributor-name">{{ contributor.login }}</a>
                             </div>
 
-                            <!-- Commits & lines -->
+                            <!-- Meta -->
                             <div class="contributor-meta">
                                 <span>{{ contributor.contributions }} commits</span>
                                 <span v-if="contributor.filtered_lines_total > 0">
-                {{ contributor.filtered_lines_total }} lines changed
-            </span>
+                            {{ contributor.filtered_lines_total }} lines changed
+                        </span>
                             </div>
 
                             <!-- Dummy stat grid -->
@@ -158,7 +168,6 @@
                                 </div>
                             </div>
 
-                            <!-- Final usefulness score -->
                             <div class="contributor-final-score">
                                 <span class="score-label">Usefulness Score:</span>
                                 <span class="score-value">7.8 / 10</span>
@@ -180,11 +189,10 @@
             </div>
         </div>
 
-        <div class="info-card">
-            <div class="info-header">
-                <p v-if="Object.keys(detailedCommits).length === 0" class="commit-note">
-                    ℹ️ Showing basic commit info. Detailed stats (additions/deletions) not loaded.
-                </p>
+
+    <div class="info-card">
+        <div class="info-content">
+            <div class="info-header commit-header-bar">
                 <h3>Recent {{ allCommits.length }} Commits</h3>
                 <div class="baseline-control">
                     <label for="baseline-slider">Baseline: {{ baseline }} lines</label>
@@ -198,57 +206,70 @@
                     />
                 </div>
             </div>
-            <div class="info-content">
-                <div class="commits-slider">
-                    <div class="commits-track">
-                        <div v-for="commit in allCommits" :key="commit.sha" class="commit-card" :class="{ 'commit-muted': isBelowBaseline(commit) }">
-                            <div class="commit-header">
-                                <img
-                                    :src="commit.author?.avatar_url"
-                                    :alt="commit.author?.login || commit.commit.author.name"
-                                    class="commit-avatar"
-                                >
-                                <div class="commit-author">
-                                    <span class="author-name">{{ commit.author?.login || commit.commit.author.name }}</span>
-                                    <span class="commit-date">{{ formatDate(commit.commit.author.date) }}</span>
-                                </div>
-                                <div class="commit-stats">
-                                    <span class="additions">+{{ commit.stats?.additions || 0 }}</span>
-                                    <span class="deletions">-{{ commit.stats?.deletions || 0 }}</span>
-                                </div>
+
+            <div class="commits-slider">
+                <div class="commits-track">
+                    <div
+                        v-for="commit in visibleCommits"
+                        :key="commit.sha"
+                        class="commit-card"
+                        :class="{ 'commit-muted': commit.stats && isBelowBaseline(commit) }"
+                    >
+                        <div class="commit-header">
+                            <img
+                                :src="commit.author?.avatar_url"
+                                :alt="commit.author?.login || commit.commit.author.name"
+                                class="commit-avatar"
+                            >
+                            <div class="commit-author">
+                                <span class="author-name">{{ commit.author?.login || commit.commit.author.name }}</span>
+                                <span class="commit-date">{{ formatDate(commit.commit.author.date) }}</span>
                             </div>
-                            <div class="commit-message">{{ commit.commit.message }}</div>
-                            <div class="commit-sha">
-                                <a :href="commit.html_url" target="_blank" class="sha-link">
-                                    {{ commit.sha.substring(0, 7) }}
-                                </a>
-                            </div>
+                        </div>
+
+                        <div class="commit-message">{{ commit.commit.message }}</div>
+
+                        <div
+                            v-if="commit.stats"
+                            class="commit-stats commit-stats-below"
+                        >
+                            <span class="additions">+{{ commit.stats.additions }}</span>
+                            <span class="deletions">-{{ commit.stats.deletions }}</span>
+                        </div>
+
+                        <div class="commit-sha">
+                            <a :href="commit.html_url" target="_blank" class="sha-link">
+                                {{ commit.sha.substring(0, 7) }}
+                            </a>
                         </div>
                     </div>
                 </div>
-                <div class="load-commits-details-wrapper">
-                    <button
-                        @click="loadAllCommitsAndDetails"
-                        :disabled="loadingMore || loadingDetailed"
-                        class="load-everything-button"
-                    >
-                        {{ loadingDetailed ? `Loading Details... ${detailedProgress}/${allCommits.length}` : 'Load All Commits + Details' }}
-                    </button>
-                </div>
+            </div>
 
-                <!---<div class="load-more-container">
-                    <button
-                        v-if="!noMoreCommits"
-                        @click="loadMoreCommits"
-                        class="load-more-button"
-                        :disabled="loadingMore"
-                    >
-                        {{ loadingMore ? 'Loading...' : 'Load More Commits' }}
-                    </button>
-                    <p v-else class="no-more-text">No more commits available.</p>
-                </div>-->
+            <div class="load-commits-details-wrapper">
+                <button
+                    @click="loadAllCommitsAndDetails"
+                    :disabled="loadingMore || loadingDetailed"
+                    class="load-everything-button"
+                >
+                    {{ loadingDetailed ? `Loading Details... ${detailedProgress}/${allCommits.length}` : 'Load All Commits + Details' }}
+                </button>
             </div>
         </div>
+    </div>
+
+
+        <!---<div class="load-more-container">
+            <button
+                v-if="!noMoreCommits"
+                @click="loadMoreCommits"
+                class="load-more-button"
+                :disabled="loadingMore"
+            >
+                {{ loadingMore ? 'Loading...' : 'Load More Commits' }}
+            </button>
+            <p v-else class="no-more-text">No more commits available.</p>
+        </div>-->
 
         <div class="load-detailed-container">
             <button
@@ -263,14 +284,19 @@
             </div>
         </div>
 
+        <div class="charts-row">
+            <CommitActivityChart :chart-data="commitActivityChartData" :key="chartKey"/>
+            <LinesActivityChart :chart-data="linesPerWeekChartData" :key="detailedProgress" />
+        </div>
 
-        <CommitActivityChart :activity="commitActivity" />
     </div>
 </template>
 
 <script>
 import { Link } from '@inertiajs/vue3';
 import CommitActivityChart from "@/Components/CommitActivityChart.vue";
+import LinesActivityChart from "@/Components/LinesActivityChart.vue";
+
 
 export default {
     data() {
@@ -283,11 +309,15 @@ export default {
             loadingMore: false,
             noMoreCommits: false,
             baseline: 10,
+            hiddenContributors: new Set(),
+            chartKey: 0,
+
         };
     },
 
     components: {
         CommitActivityChart,
+        LinesActivityChart,
         Link,
     },
     props: {
@@ -353,6 +383,7 @@ export default {
                             } : null,
                         })));
                         this.page++;
+                        this.chartKey++;
                     }
                 } else {
                     console.error('Failed to load more commits');
@@ -471,13 +502,183 @@ export default {
                     contributor.filtered_lines_total += lines;
                 }
             });
+        },
+        toggleContributorVisibility(login) {
+            if (this.hiddenContributors.has(login)) {
+                this.hiddenContributors.delete(login);
+            } else {
+                this.hiddenContributors.add(login);
+            }
+        },
+        generateColorFromString(str) {
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) {
+                hash = str.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            const hue = Math.abs(hash) % 360;
+            return `hsl(${hue}, 70%, 55%)`;
+        },
+        getContributorColor(login) {
+            if (!login) return '#9ca3af'; // szürke fallback
+            return this.generateColorFromString(login);
         }
-
     },
     watch: {
         baseline(newVal) {
             this.calculateFilteredContributorStats();
         },
+    },
+    computed: {
+        visibleCommits() {
+            return this.allCommits.filter(commit => {
+                const login = commit.author?.login;
+                return !login || !this.hiddenContributors.has(login);
+            });
+        },
+        commitActivityChartData() {
+            const formatKey = (d) => d.toISOString().split('T')[0];
+
+            const start = new Date(this.repository.created_at);
+            const end = new Date(this.repository.updated_at);
+
+            // Igazítás hétfőre
+            const alignedStart = new Date(start);
+            alignedStart.setDate(alignedStart.getDate() - (alignedStart.getDay() + 6) % 7);
+
+            const labels = [];
+            const buckets = {};
+
+            const contributorLogins = this.contributors.map(c => c.login);
+            const mainContributors = new Set(contributorLogins);
+
+            for (let d = new Date(alignedStart); d <= end; d.setDate(d.getDate() + 7)) {
+                const key = formatKey(new Date(d));
+                labels.push(key);
+                buckets[key] = {
+                    total: 0,
+                    other: 0,
+                };
+                for (const login of contributorLogins) {
+                    buckets[key][login] = 0;
+                }
+            }
+
+            for (const commit of this.allCommits) {
+                const date = new Date(commit.commit.author.date);
+                const weekStart = new Date(date);
+                weekStart.setDate(weekStart.getDate() - (weekStart.getDay() + 6) % 7);
+                const key = formatKey(weekStart);
+                if (!(key in buckets)) continue;
+
+                const login = commit.author?.login;
+                if (login && mainContributors.has(login)) {
+                    buckets[key][login]++;
+                    buckets[key].total++;
+                } else {
+                    buckets[key].other++;
+                }
+            }
+
+            const datasets = [];
+
+            datasets.push({
+                label: 'Total (Main Contributors)',
+                data: labels.map(label => buckets[label].total),
+                borderColor: '#2563eb',
+                backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                pointBackgroundColor: '#2563eb',
+                tension: 0.3,
+                fill: true,
+            });
+
+            for (const login of contributorLogins) {
+                datasets.push({
+                    label: login,
+                    data: labels.map(label => buckets[label][login]),
+                    borderColor: this.getContributorColor(login),
+                    backgroundColor: 'transparent',
+                    tension: 0.3,
+                });
+            }
+
+            return {
+                labels,
+                datasets,
+            };
+        },
+
+        linesPerWeekChartData() {
+            const buckets = {};
+            const start = new Date(this.repository.created_at);
+            const end = new Date(this.repository.updated_at);
+
+            // Igazítás hétfőre
+            const alignedStart = new Date(start);
+            alignedStart.setDate(alignedStart.getDate() - (alignedStart.getDay() + 6) % 7);
+
+            const weekKeys = [];
+            for (let d = new Date(alignedStart); d <= end; d.setDate(d.getDate() + 7)) {
+                const key = d.toISOString().split('T')[0];
+                weekKeys.push(key);
+                buckets[key] = { total: 0, other: 0 };
+                for (const c of this.contributors) {
+                    buckets[key][c.login] = 0;
+                }
+            }
+
+            for (const commit of this.allCommits) {
+                const stats = commit.stats;
+                const login = commit.author?.login;
+                if (!stats || !login) continue;
+
+                const lines = stats.additions + Math.abs(stats.deletions);
+                const date = new Date(commit.commit.author.date);
+                const weekStart = new Date(date);
+                weekStart.setDate(weekStart.getDate() - (weekStart.getDay() + 6) % 7);
+                const key = weekStart.toISOString().split('T')[0];
+                if (!buckets[key]) continue;
+
+                if (this.contributors.some(c => c.login === login)) {
+                    buckets[key][login] += lines;
+                } else {
+                    buckets[key].other += lines;
+                }
+
+                buckets[key].total += lines;
+            }
+
+            const datasets = [];
+
+            // Total
+            datasets.push({
+                label: 'Total (Main Contributors)',
+                data: weekKeys.map(k => buckets[k].total),
+                borderColor: '#22c55e',
+                backgroundColor: 'rgba(34,197,94,0.1)',
+                tension: 0.3,
+                fill: true,
+            });
+
+            // Main contributors
+            for (const c of this.contributors) {
+                datasets.push({
+                    label: c.login,
+                    data: weekKeys.map(k => buckets[k][c.login]),
+                    borderColor: this.getContributorColor(c.login),
+                    tension: 0.3,
+                    fill: false,
+                });
+            }
+
+            return {
+                labels: weekKeys,
+                datasets,
+            };
+        }
+
+
+
+
     }
 };
 </script>
@@ -670,19 +871,6 @@ html, body {
     border-radius: 8px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
-
-.contributor-avatar {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    margin-right: 1rem;
-}
-
-.contributor-info {
-    display: flex;
-    flex-direction: column;
-}
-
 .contributor-name {
     color: #2563eb;
     text-decoration: none;
@@ -691,11 +879,6 @@ html, body {
 
 .contributor-name:hover {
     text-decoration: underline;
-}
-
-.contributions {
-    font-size: 0.875rem;
-    color: #6b7280;
 }
 
 @media (max-width: 768px) {
@@ -989,7 +1172,6 @@ html, body {
 .stat-value {
     font-size: 1.1rem;
     font-weight: bold;
-    color: #111827;
 }
 
 .stat-label {
@@ -1003,6 +1185,83 @@ html, body {
     color: #2563eb;
     margin-top: 0.25rem;
 }
+
+.commit-header-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.baseline-control {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.baseline-control label {
+    font-size: 0.875rem;
+    color: #374151;
+}
+
+.load-commits-details-wrapper {
+    display: flex;
+    justify-content: center;
+    margin-top: 1.5rem;
+}
+
+.commit-stats-below {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    font-family: monospace;
+    font-size: 0.875rem;
+    margin-top: 0.5rem;
+}
+
+.hide-commits-btn {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    background: #f3f4f6;
+    border: none;
+    padding: 0.25rem 0.6rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    z-index: 2;
+}
+
+.hide-commits-btn:hover {
+    background: #e5e7eb;
+}
+
+.contributor-hidden {
+    opacity: 0.4;
+    filter: grayscale(80%);
+    transition: all 0.2s ease;
+}
+
+.contributor-stats-card {
+    position: relative;
+}
+
+.charts-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 1rem; /* kisebb hézag */
+    margin-top: 2rem;
+}
+
+.charts-row .info-card {
+    flex: 0 0 47%;
+    max-width: 47%;
+    box-sizing: border-box;
+}
+
 
 
 </style>
