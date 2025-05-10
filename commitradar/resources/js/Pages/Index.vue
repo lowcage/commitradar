@@ -1,22 +1,19 @@
 <script>
 import CustomInput from "@/Components/CustomInput.vue";
-import ShowSettingButton from "@/Components/ShowSettingButton.vue";
-import SettingsCard from "@/Components/SettingsCard.vue";
 
 export default {
     name: 'Index',
-    components: {SettingsCard, ShowSettingButton, CustomInput },
+    components: {CustomInput },
     data() {
         return {
-            showSettings: false,
             showNotification: false,
             notificationMessage: "",
+            dateFrom: this.getDefaultStartDate(),
+            dateTo: this.getToday(),
+            today: this.getToday()
         };
     },
     methods: {
-        toggleSettings() {
-            this.showSettings = !this.showSettings;
-        },
         triggerNotification(message) {
             this.notificationMessage = message;
             this.showNotification = true;
@@ -26,6 +23,15 @@ export default {
                 this.showNotification = false;
                 this.notificationMessage = '';
             }, 3000);
+        },
+        getToday() {
+            const today = new Date();
+            return today.toISOString().split('T')[0];
+        },
+        getDefaultStartDate() {
+            const date = new Date();
+            date.setDate(date.getDate() - 7);
+            return date.toISOString().split('T')[0];
         },
     },
     props: {
@@ -73,30 +79,21 @@ export default {
                     </span>
                     r
                 </p>
-            <CustomInput :notificationHandler="triggerNotification" style="padding-bottom: 25px"/>
-            <!-- Show/Hide Settings Button -->
-            <div class="settings-wrapper" @click="toggleSettings">
-                <div class="settings-text-container">
-                    <transition name="fade-slide">
-                        <span v-if="showSettings" class="settings-label" key="hide">
-                            Hide Settings
-                        </span>
-                        <span v-else class="settings-label" key="show">
-                            Show Settings
-                        </span>
-                    </transition>
-                </div>
-                <ShowSettingButton :modelValue="showSettings" @update:modelValue="showSettings = $event" />
+            <CustomInput :notificationHandler="triggerNotification"
+                         :date-from="dateFrom"
+                         :date-to="dateTo"
+                         style="padding-bottom: 25px"/>
+
+            <div style="display: flex; align-items: center; gap: 10px; padding-bottom: 25px; flex-wrap: wrap;">
+                <label style="color: white;">Start date:</label>
+                <input type="date" v-model="dateFrom" class="date-picker" :max="today"/>
+
+                <span style="color: white;">–</span>
+
+                <label style="color: white;">End date:</label>
+                <input type="date" v-model="dateTo" class="date-picker" :max="today"/>
             </div>
 
-            <!-- Container for Settings Card to Prevent Jumps -->
-            <div class="card-placeholder">
-                <transition name="card-fade">
-                    <div v-if="showSettings" class="settings-card">
-                        <SettingsCard />
-                    </div>
-                </transition>
-            </div>
         </div>
     </div>
 </template>
@@ -329,5 +326,14 @@ export default {
     to {
         transform: translateY(-2000px);
     }
+}
+
+.date-picker {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 8px;
+    font-size: 16px;
+    color: #374151;
 }
 </style>

@@ -1,11 +1,46 @@
 <template>
     <div class="repository-page">
-        <div class="page-header">
-            <h1 class="page-title">Repository Details: <span class="repo-name">{{ repository.name }}</span></h1>
-            <Link :href="route('index')" class="back-button" as="button">
-                Back to Home
-            </Link>
+
+        <div class="page-header sticky-header">
+            <div class="header-content">
+                <div class="left-section">
+                    <h1 class="page-title">
+                        Repository:
+                        <span class="repo-name">{{ owner }} / {{ repo }}</span>
+                    </h1>
+                </div>
+
+                <div class="center-section">
+                    <div class="date-range">
+                        <span class="label">From:</span>
+                        <span class="date">{{ startDate }}</span>
+                        <span class="dash">–</span>
+                        <span class="label">To:</span>
+                        <span class="date">{{ endDate }}</span>
+                    </div>
+
+                    <div class="status-row">
+                        <div class="commit-status">
+                            <span class="label">All commits loaded:</span>
+                            <span :class="allCommitsLoaded ? 'status-yes': 'status-no'">{{ allCommitsLoaded ? 'Yes' : 'No' }}</span>
+                        </div>
+                        <div class="commit-status">
+                            <span class="label">Commit details loaded:</span>
+                            <span class="status-no">{{ detailedCommitsLoaded ? 'Yes' : 'No' }}</span>
+                        </div>
+                    </div>
+                </div>
+
+
+                <div class="right-section">
+                    <button class="back-button" @click="goHome">
+                        Back to Home
+                    </button>
+                </div>
+            </div>
         </div>
+
+        <div class="page-content">
         <div class="info-grid">
             <div class="info-card">
                 <div class="info-header">
@@ -197,7 +232,7 @@
     <div class="info-card">
         <div class="info-content">
             <div class="info-header commit-header-bar">
-                <h3>Recent {{ allCommits.length }} Commits</h3>
+                <h3>Recent {{ allCommits.length }} Commits <span v-if="hasMoreCommits"></span></h3>
                 <div class="baseline-control">
                     <label for="baseline-slider">Baseline: {{ baseline }} lines</label>
                     <input
@@ -213,7 +248,11 @@
 
             <div class="commits-slider">
                 <div class="commits-track">
+                    <div v-if="commitsEmpty" class="no-commits">
+                        <strong>No commits found for the selected date range.</strong>
+                    </div>
                     <div
+                        v-if="!commitsEmpty"
                         v-for="commit in visibleCommits"
                         :key="commit.sha"
                         class="commit-card"
@@ -252,28 +291,16 @@
 
             <div class="load-commits-details-wrapper">
                 <button
-                    @click="loadAllCommitsAndDetails"
-                    :disabled="loadingMore || loadingDetailed"
+                    @click="loadMoreCommits"
+                    :disabled="loadingMore || !hasMoreCommits || allCommitsLoaded"
                     class="load-everything-button"
                 >
-                    {{ loadingDetailed ? `Loading Details... ${detailedProgress}/${allCommits.length}` : 'Load All Commits + Details' }}
+                    {{ loadingMore ? 'Loading More Commits...' : 'Load All Commits' }}
                 </button>
             </div>
+
         </div>
     </div>
-
-
-        <!---<div class="load-more-container">
-            <button
-                v-if="!noMoreCommits"
-                @click="loadMoreCommits"
-                class="load-more-button"
-                :disabled="loadingMore"
-            >
-                {{ loadingMore ? 'Loading...' : 'Load More Commits' }}
-            </button>
-            <p v-else class="no-more-text">No more commits available.</p>
-        </div>-->
 
         <div class="load-detailed-container">
             <button
@@ -288,17 +315,11 @@
             </div>
         </div>
 
-        <div class="demo-load-buttons">
-            <button @click="loadCommitsSinceMonths(3)">Last 3 Months</button>
-            <button @click="loadCommitsSinceMonths(12)">Last 1 Year</button>
-            <button @click="loadCommitsByCount(1000)">Last 1000 Commits</button>
-        </div>
-
         <div class="charts-row">
             <CommitActivityChart :chart-data="commitActivityChartData" :key="chartKey"/>
             <LinesActivityChart :chart-data="linesPerWeekChartData" :key="detailedProgress" />
         </div>
-
+        </div>
     </div>
 </template>
 
@@ -317,11 +338,10 @@ export default {
             page: 2, // 1-et már lekértünk backendről
             allCommits: [...this.commits],
             loadingMore: false,
-            noMoreCommits: false,
             baseline: 10,
             hiddenContributors: new Set(),
             chartKey: 0,
-
+            allCommitsLoaded: !this.hasMoreCommits,
         };
     },
 
@@ -357,53 +377,69 @@ export default {
         },
         owner: { type: String, required: true },
         repo: { type: String, required: true },
+        startDate: { type: String, required: true },
+        endDate: { type: String, required: true },
+        hasMoreCommits: Boolean,
+        commitsEmpty: Boolean
     },
     methods: {
         async loadMoreCommits() {
-            if (this.loadingMore || this.noMoreCommits) return;
+            if (this.loadingMore || !this.hasMoreCommits) return;
 
             this.loadingMore = true;
-            try {
-                const response = await fetch(`https://api.github.com/repos/${this.owner}/${this.repo}/commits?per_page=50&page=${this.page}`, {
-                    headers: {
-                        Authorization: `Bearer ${this.token}`,
-                        Accept: 'application/vnd.github.v3+json',
-                    }
-                });
 
-                if (response.ok) {
+            try {
+                let keepFetching = true;
+
+                while (keepFetching) {
+                    const response = await fetch(`https://api.github.com/repos/${this.owner}/${this.repo}/commits?per_page=50&page=${this.page}&since=${this.startDate}T00:00:00Z&until=${this.endDate}T23:59:59Z`, {
+                        headers: {
+                            Authorization: `Bearer ${this.token}`,
+                            Accept: 'application/vnd.github.v3+json',
+                        }
+                    });
+
+                    if (!response.ok) {
+                        console.error('Failed to load commits');
+                        break;
+                    }
+
                     const newCommits = await response.json();
 
                     if (newCommits.length === 0) {
-                        this.noMoreCommits = true;
-                    } else {
-                        this.allCommits.push(...newCommits.map(commit => ({
-                            sha: commit.sha,
-                            html_url: commit.html_url,
-                            commit: {
-                                author: {
-                                    name: commit.commit.author.name,
-                                    date: commit.commit.author.date,
-                                },
-                                message: commit.commit.message,
-                            },
-                            author: commit.author ? {
-                                login: commit.author.login,
-                                avatar_url: commit.author.avatar_url,
-                            } : null,
-                        })));
-                        this.page++;
-                        this.chartKey++;
+                        keepFetching = false;
+                        break;
                     }
-                } else {
-                    console.error('Failed to load more commits');
-                    this.noMoreCommits = true;
+
+                    this.allCommits.push(...newCommits.map(commit => ({
+                        sha: commit.sha,
+                        html_url: commit.html_url,
+                        commit: {
+                            author: {
+                                name: commit.commit.author.name,
+                                date: commit.commit.author.date,
+                            },
+                            message: commit.commit.message,
+                        },
+                        author: commit.author ? {
+                            login: commit.author.login,
+                            avatar_url: commit.author.avatar_url,
+                        } : null,
+                    })));
+
+                    if (newCommits.length < 50) {
+                        keepFetching = false;
+                    } else {
+                        this.page++;
+                    }
+
+                    this.chartKey++;
                 }
             } catch (error) {
                 console.error('Error fetching commits:', error);
-                this.noMoreCommits = true;
             } finally {
                 this.loadingMore = false;
+                this.allCommitsLoaded = true;
             }
         },
 
@@ -470,14 +506,6 @@ export default {
             this.calculateFilteredContributorStats();
         },
 
-        async loadAllCommitsAndDetails() {
-            while (!this.noMoreCommits) {
-                await this.loadMoreCommits();
-            }
-
-            await this.loadAllCommitDetails(5);
-        },
-
         formatDate(dateString) {
             const options = { year: 'numeric', month: 'long', day: 'numeric' };
             return new Date(dateString).toLocaleDateString(undefined, options);
@@ -532,97 +560,9 @@ export default {
             if (!login) return '#9ca3af'; // szürke fallback
             return this.generateColorFromString(login);
         },
-        async loadCommitsSinceMonths(months) {
-            this.allCommits = [];
-            this.page = 1;
-            this.noMoreCommits = false;
-
-            const cutoffDate = new Date();
-            cutoffDate.setMonth(cutoffDate.getMonth() - months);
-
-            while (!this.noMoreCommits) {
-                const response = await fetch(`https://api.github.com/repos/${this.owner}/${this.repo}/commits?per_page=50&page=${this.page}`, {
-                    headers: {
-                        Authorization: `Bearer ${this.token}`,
-                        Accept: 'application/vnd.github.v3+json',
-                    }
-                });
-
-                if (!response.ok) break;
-
-                const newCommits = await response.json();
-                if (newCommits.length === 0) {
-                    this.noMoreCommits = true;
-                    break;
-                }
-
-                const filtered = newCommits.filter(c => new Date(c.commit.author.date) > cutoffDate);
-                this.allCommits.push(...filtered.map(commit => ({
-                    sha: commit.sha,
-                    html_url: commit.html_url,
-                    commit: {
-                        author: {
-                            name: commit.commit.author.name,
-                            date: commit.commit.author.date,
-                        },
-                        message: commit.commit.message,
-                    },
-                    author: commit.author ? {
-                        login: commit.author.login,
-                        avatar_url: commit.author.avatar_url,
-                    } : null,
-                })));
-
-                if (filtered.length < newCommits.length) break;
-
-                this.page++;
-            }
-
-            this.chartKey++;
+        goHome() {
+            window.location.href = "/";
         },
-
-        async loadCommitsByCount(limit) {
-            this.allCommits = [];
-            this.page = 1;
-            this.noMoreCommits = false;
-
-            while (this.allCommits.length < limit && !this.noMoreCommits) {
-                const response = await fetch(`https://api.github.com/repos/${this.owner}/${this.repo}/commits?per_page=50&page=${this.page}`, {
-                    headers: {
-                        Authorization: `Bearer ${this.token}`,
-                        Accept: 'application/vnd.github.v3+json',
-                    }
-                });
-
-                if (!response.ok) break;
-
-                const newCommits = await response.json();
-                if (newCommits.length === 0) {
-                    this.noMoreCommits = true;
-                    break;
-                }
-
-                this.allCommits.push(...newCommits.map(commit => ({
-                    sha: commit.sha,
-                    html_url: commit.html_url,
-                    commit: {
-                        author: {
-                            name: commit.commit.author.name,
-                            date: commit.commit.author.date,
-                        },
-                        message: commit.commit.message,
-                    },
-                    author: commit.author ? {
-                        login: commit.author.login,
-                        avatar_url: commit.author.avatar_url,
-                    } : null,
-                })));
-
-                this.page++;
-            }
-
-            this.chartKey++;
-        }
     },
     watch: {
         baseline(newVal) {
@@ -794,18 +734,22 @@ html, body {
 }
 
 .repository-page {
-    padding: 2rem;
     width: 100%;
     box-sizing: border-box;
     min-height: 100vh;
-    overflow-y: auto;
 }
 
-.page-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 2rem;
+.page-header.sticky-header {
+    position: sticky;
+    top: 0;
+    background-color: #0f172a;
+    z-index: 10;
+    padding: 15px 30px;
+    border-bottom: 1px solid #334155;
+}
+
+.page-content {
+    padding: 2rem;
 }
 
 .back-button {
@@ -823,18 +767,6 @@ html, body {
 
 .back-button:hover {
     background-color: rgba(255, 255, 255, 0.2);
-}
-
-.page-title {
-    font-size: 2rem;
-    font-weight: 600;
-    color: white;
-    margin-bottom: 2rem;
-}
-
-.repo-name {
-    color: #60A5FA;
-    font-style: italic;
 }
 
 .info-grid {
@@ -1386,6 +1318,106 @@ html, body {
     background-color: #4338ca;
 }
 
+.header-content {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
 
+.date-range {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 14px;
+    color: #e2e8f0;
+}
 
+.date {
+    font-weight: bold;
+    color: #fcd34d;
+}
+
+.dash {
+    color: #94a3b8;
+}
+
+.back-button {
+    background-color: #334155;
+    color: #f1f5f9;
+    padding: 6px 12px;
+    border-radius: 6px;
+    text-decoration: none;
+}
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.left-section,
+.center-section,
+.right-section {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.page-title {
+    font-size: 20px;
+    color: #f8fafc;
+    margin: 0;
+}
+
+.repo-name {
+    font-weight: bold;
+    color: #38bdf8;
+}
+
+.date-range, .commit-status {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 14px;
+    color: #e2e8f0;
+}
+
+.date {
+    font-weight: bold;
+    color: #fcd34d;
+}
+
+.status.no {
+    font-weight: bold;
+    color: #ef4444; /* piros */
+}
+
+.dash {
+    color: #94a3b8;
+}
+
+.back-button {
+    background-color: #334155;
+    color: #f1f5f9;
+    padding: 6px 12px;
+    border-radius: 6px;
+    text-decoration: none;
+}
+
+.commit-status .status-no {
+    font-weight: bold;
+    font-size: 14px;
+    color: #f87171;
+}
+
+.commit-status .status-yes {
+    font-weight: bold;
+    font-size: 14px;
+    color: #57aa44;
+}
 </style>

@@ -32,6 +32,8 @@ Route::get('/github/redirect', function (Illuminate\Http\Request $request) {
     $token = session('github_token');
     $owner = $request->input('owner');
     $repo = $request->input('repo');
+    $startDate = $request->input('startDate');
+    $endDate = $request->input('endDate');
 
     if (!$owner || !$repo) {
         return redirect('/')
@@ -40,7 +42,12 @@ Route::get('/github/redirect', function (Illuminate\Http\Request $request) {
 
     if (!$token) {
         // Store owner and repo in session for use after authentication
-        session(['owner' => $owner, 'repo' => $repo]);
+        session([
+            'owner' => $owner,
+            'repo' => $repo,
+            'startDate' => $startDate,
+            'endDate' => $endDate,
+        ]);
 
         // Redirect to GitHub for authentication
         return Socialite::driver('github')
@@ -49,7 +56,7 @@ Route::get('/github/redirect', function (Illuminate\Http\Request $request) {
     }
 
     // If token exists, directly redirect to github.repository
-    return redirect()->route('github.repository', compact('owner', 'repo'));
+    return redirect()->route('github.repository', compact('owner', 'repo', 'startDate', 'endDate'));
 })->name('github.redirect');
 
 Route::get('/github/callback', function () {
@@ -60,6 +67,8 @@ Route::get('/github/callback', function () {
         // Retrieve owner and repo from session
         $owner = session('owner');
         $repo = session('repo');
+        $startDate = session('startDate');
+        $endDate = session('endDate');
 
         // Ensure owner and repo exist
         if (!$owner || !$repo) {
@@ -68,10 +77,10 @@ Route::get('/github/callback', function () {
         }
 
         // Clear owner and repo from session
-        session()->forget(['owner', 'repo']);
+        session()->forget(['owner', 'repo', 'startDate', 'endDate']);
 
         // Redirect to the github.repository route with the owner and repo
-        return redirect()->route('github.repository', compact('owner', 'repo'));
+        return redirect()->route('github.repository', compact('owner', 'repo', 'startDate', 'endDate'));
     } catch (\Exception $e) {
         // Handle authentication failure
         return redirect('/')
@@ -94,6 +103,8 @@ Route::match(['GET', 'POST'], '/github/repository', function (Illuminate\Http\Re
     $token = session('github_token');
     $owner = $request->input('owner');
     $repo = $request->input('repo');
+    $startDate = $request->input('startDate', session('startDate'));
+    $endDate = $request->input('endDate', session('endDate'));
 
     if (!$token) {
         return redirect('/')->with('auth_error', 'No GitHub token found. Please authenticate first.');
@@ -127,12 +138,21 @@ Route::match(['GET', 'POST'], '/github/repository', function (Illuminate\Http\Re
     $commitsResponse = Http::withToken($token)
         ->get("https://api.github.com/repos/$owner/$repo/commits", [
             'per_page' => 50,
-            'page' => 1
+            'page' => 1,
+            'since' => $startDate . 'T00:00:00Z',
+            'until' => $endDate . 'T23:59:59Z',
         ]);
 
     $commits = [];
+
+    $hasMoreCommits = false;
+    $commitsEmpty = true;
+
     if ($commitsResponse->successful()) {
         $commitsRaw = $commitsResponse->json();
+        $commitsEmpty = count($commitsRaw) === 0;
+        $hasMoreCommits = count($commitsRaw) === 50;
+
 
         // From the basic commit list we extract the needed data
         foreach ($commitsRaw as $commit) {
@@ -167,13 +187,6 @@ Route::match(['GET', 'POST'], '/github/repository', function (Illuminate\Http\Re
         $repositoryData['closed_issues_count'] = $searchResult['total_count'];
     }
 
-    // Get contributors
-    $contributorsResponse = Http::withToken($token)->get("https://api.github.com/repos/$owner/$repo/contributors");
-    if ($contributorsResponse->failed()) {
-        return redirect('/')->with('auth_error', 'Failed to retrieve contributors data.');
-    }
-    $contributors = $contributorsResponse->json();
-
     // Calculate total commits from contributors
     $totalCommits = 0;
     foreach ($contributors as &$contributor) {
@@ -198,10 +211,14 @@ Route::match(['GET', 'POST'], '/github/repository', function (Illuminate\Http\Re
         'repository' => $repositoryData,
         'contributors' => $contributors,
         'commits' => $commits,
+        'hasMoreCommits' => $hasMoreCommits,
+        'commitsEmpty' => $commitsEmpty,
         'totalCommits' => $totalCommits,
         'commitActivity' => $commitActivity,
         'owner' => $owner,
         'repo' => $repo,
+        'startDate' => $startDate,
+        'endDate' => $endDate
     ]);
 })->name('github.repository');
 

@@ -76,6 +76,18 @@ export default {
     },
     methods: {
         handleInput() {
+            const today = new Date().toISOString().slice(0, 10);
+
+            if (new Date(this.dateFrom) > new Date(this.dateTo)) {
+                this.notificationHandler('Start date cannot be after end date.');
+                return;
+            }
+
+            if (this.dateFrom > today || this.dateTo > today) {
+                this.notificationHandler('Dates cannot be in the future.');
+                return;
+            }
+
             if (this.validateUrl(this.repositoryUrl)) {
                 // Extract owner and repo from the repository URL
                 const { owner, repo } = this.extractOwnerAndRepo(this.repositoryUrl);
@@ -85,7 +97,7 @@ export default {
                     console.log('Redirecting to /github/redirect with owner and repo');
 
                     // Perform a hard redirect to /github/redirect with owner and repo as query parameters
-                    window.location.href = `/github/redirect?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}`;
+                    window.location.href = `/github/redirect?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}&startDate=${this.dateFrom}&endDate=${this.dateTo}`;
                 } else {
                     this.notificationHandler('Invalid repository URL. Could not extract owner and repo.');
                 }
@@ -110,6 +122,8 @@ export default {
     },
     props: {
         notificationHandler: Function, // Prop to trigger the parent's notification
+        dateFrom: String,
+        dateTo: String,
     },
 };
 </script>
