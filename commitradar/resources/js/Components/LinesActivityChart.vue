@@ -1,7 +1,11 @@
 <template>
     <div class="info-card">
         <div class="info-header">
-            <h3>Lines Changed per Week (Loaded Only)</h3>
+            <h3>Lines Changed</h3>
+            <ul class="chart-note-list">
+                <li>Only commits with details loaded are included</li>
+                <li>Commits below baseline are not shown</li>
+            </ul>
         </div>
         <div class="info-content">
             <canvas ref="canvas"></canvas>
@@ -68,4 +72,12 @@ export default {
     padding: 1.5rem;
     height: 400px;
 }
+.chart-note-list {
+    margin: 0;
+    padding-left: 1.2rem;
+    list-style-type: disc;
+    font-size: 0.85rem;
+    color: #6b7280; /* tailwind: text-gray-500 */
+}
+
 </style>

@@ -11,22 +11,40 @@
                 </div>
 
                 <div class="center-section">
-                    <div class="date-range">
-                        <span class="label">From:</span>
-                        <span class="date">{{ startDate }}</span>
-                        <span class="dash">–</span>
-                        <span class="label">To:</span>
-                        <span class="date">{{ endDate }}</span>
+                    <div class="date-range-with-buttons">
+                        <div class="date-group">
+                            <span class="label">From:</span>
+                            <span class="date">{{ startDate }}</span>
+                            <div class="date-buttons">
+                                <button @click="adjustDate('start', -1)">←</button>
+                                <button @click="adjustDate('start', 1)">→</button>
+                            </div>
+                        </div>
+
+                        <div class="date-dash">–</div>
+
+                        <div class="date-group">
+                            <span class="label">To:</span>
+                            <span class="date">{{ endDate }}</span>
+                            <div class="date-buttons">
+                                <button @click="adjustDate('end', -1)">←</button>
+                                <button @click="adjustDate('end', 1)">→</button>
+                            </div>
+                        </div>
                     </div>
+
+
 
                     <div class="status-row">
                         <div class="commit-status">
-                            <span class="label">All commits loaded:</span>
+                            <span class="label"><span v-if="!allCommitsLoaded">⚠️</span>All commits loaded:</span>
                             <span :class="allCommitsLoaded ? 'status-yes': 'status-no'">{{ allCommitsLoaded ? 'Yes' : 'No' }}</span>
                         </div>
                         <div class="commit-status">
-                            <span class="label">Commit details loaded:</span>
-                            <span class="status-no">{{ detailedCommitsLoaded ? 'Yes' : 'No' }}</span>
+                            <span class="label"><span v-if="!detailedCommitsLoaded">⚠️</span>Commit details loaded:</span>
+                            <span :class="detailedCommitsLoaded ? 'status-yes' : 'status-no'">
+                                {{ detailedCommitsLoaded ? 'Yes' : 'No' }}
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -167,7 +185,7 @@
 
                             <!-- Header -->
                             <div class="contributor-header">
-                                <img :src="contributor.avatar_url" :alt="contributor.login" class="contributor-avatar-large" />
+                                <img :src="contributor.avatar_url" :alt="contributor.login" class="contributor-avatar-large" :style="{ border: '3px solid ' + getContributorColor(contributor.login), borderRadius: '100%' }" />
                                 <a :href="contributor.html_url" target="_blank" class="contributor-name">{{ contributor.login }}</a>
                             </div>
 
@@ -232,8 +250,12 @@
     <div class="info-card">
         <div class="info-content">
             <div class="info-header commit-header-bar">
-                <h3>Recent {{ allCommits.length }} Commits <span v-if="hasMoreCommits"></span></h3>
-                <div class="baseline-control">
+                <h3>Recent {{ allCommits.length }} Commits
+                    <span v-if="detailedCommitsLoaded">
+                        ({{ filteredCommitsCount }} above baseline)
+                    </span>
+                </h3>
+                <div v-if="detailedCommitsLoaded" class="baseline-control">
                     <label for="baseline-slider">Baseline: {{ baseline }} lines</label>
                     <input
                         id="baseline-slider"
@@ -243,6 +265,7 @@
                         step="1"
                         v-model="baseline"
                     />
+                    <span class="baseline-note">Commits below baseline do not affect scorings.</span>
                 </div>
             </div>
 
@@ -293,31 +316,30 @@
                 <button
                     @click="loadMoreCommits"
                     :disabled="loadingMore || !hasMoreCommits || allCommitsLoaded"
-                    class="load-everything-button"
+                    class="load-button"
                 >
                     {{ loadingMore ? 'Loading More Commits...' : 'Load All Commits' }}
+                </button>
+                <button
+                    @click="loadAllCommitDetails(5)"
+                    class="load-button"
+                    :disabled="loadingDetailed || !hasCommitsWithoutDetails"
+                >
+                    <span v-if="loadingDetailed">
+                        Loading details... {{ detailedProgress }}/{{ allCommits.length }}
+                    </span>
+                                    <span v-else>
+                        Load Details for Recent Commits
+                    </span>
                 </button>
             </div>
 
         </div>
     </div>
 
-        <div class="load-detailed-container">
-            <button
-                v-if="!loadingDetailed"
-                @click="loadAllCommitDetails(5)"
-                class="load-detailed-button"
-            >
-                Load Details for Recent Commits
-            </button>
-            <div v-else class="detailed-progress">
-                Loading... {{ detailedProgress }}/{{ allCommits.length }}
-            </div>
-        </div>
-
         <div class="charts-row">
             <CommitActivityChart :chart-data="commitActivityChartData" :key="chartKey"/>
-            <LinesActivityChart :chart-data="linesPerWeekChartData" :key="detailedProgress" />
+            <LinesActivityChart :chart-data="linesPerWeekChartData" :key="linesChartKey" />
         </div>
         </div>
     </div>
@@ -332,6 +354,8 @@ import LinesActivityChart from "@/Components/LinesActivityChart.vue";
 export default {
     data() {
         return {
+            localStartDate: this.startDate,
+            localEndDate: this.endDate,
             detailedCommits: {}, // sha -> { additions, deletions }
             loadingDetailed: false,
             detailedProgress: 0,
@@ -341,6 +365,7 @@ export default {
             baseline: 10,
             hiddenContributors: new Set(),
             chartKey: 0,
+            linesChartKey: 0,
             allCommitsLoaded: !this.hasMoreCommits,
         };
     },
@@ -447,7 +472,6 @@ export default {
             if (this.loadingDetailed) return;
 
             this.loadingDetailed = true;
-            this.detailedProgress = 0;
 
             while (true) {
                 const remainingCommits = this.allCommits.filter(c => !this.detailedCommits[c.sha]);
@@ -504,6 +528,8 @@ export default {
 
             this.loadingDetailed = false;
             this.calculateFilteredContributorStats();
+            this.chartKey++;
+            this.linesChartKey++;
         },
 
         formatDate(dateString) {
@@ -563,13 +589,58 @@ export default {
         goHome() {
             window.location.href = "/";
         },
+        adjustDate(type, amount) {
+            const current = new Date(type === 'start' ? this.localStartDate : this.localEndDate);
+            current.setDate(current.getDate() + amount);
+
+            const formatted = current.toISOString().split('T')[0];
+
+            if (type === 'start') {
+                this.localStartDate = formatted;
+            } else {
+                this.localEndDate = formatted;
+            }
+
+            this.reloadWithNewDates();
+        },
+        reloadWithNewDates() {
+            this.$inertia.get(route('github.repository'), {
+                owner: this.owner,
+                repo: this.repo,
+                startDate: this.localStartDate,
+                endDate: this.localEndDate,
+            });
+        },
     },
     watch: {
         baseline(newVal) {
             this.calculateFilteredContributorStats();
+            this.chartKey++;
+            this.linesChartKey++;
         },
     },
     computed: {
+        filteredCommits() {
+            return this.allCommits.filter(c => {
+                const stats = c.stats;
+                return stats && (stats.additions + Math.abs(stats.deletions)) >= this.baseline;
+            });
+        },
+        filteredCommitsCount() {
+            return this.allCommits.filter(commit => {
+                const stats = commit.stats;
+                if (!stats) return false;
+                const totalLines = stats.additions + Math.abs(stats.deletions);
+                return totalLines >= this.baseline;
+            }).length;
+        },
+        detailedCommitsLoaded() {
+            return this.allCommits.length > 0 &&
+                this.allCommits.every(c => !!this.detailedCommits[c.sha]);
+        },
+        hasCommitsWithoutDetails() {
+            return this.allCommits.some(c => !this.detailedCommits[c.sha]);
+        },
         visibleCommits() {
             return this.allCommits.filter(commit => {
                 const login = commit.author?.login;
@@ -577,41 +648,30 @@ export default {
             });
         },
         commitActivityChartData() {
-            const formatKey = (d) => d.toISOString().split('T')[0];
-
-            const start = new Date(this.repository.created_at);
-            const end = new Date(this.repository.updated_at);
-
-            // Igazítás hétfőre
-            const alignedStart = new Date(start);
-            alignedStart.setDate(alignedStart.getDate() - (alignedStart.getDay() + 6) % 7);
-
-            const labels = [];
-            const buckets = {};
-
             const contributorLogins = this.contributors.map(c => c.login);
             const mainContributors = new Set(contributorLogins);
 
-            for (let d = new Date(alignedStart); d <= end; d.setDate(d.getDate() + 7)) {
-                const key = formatKey(new Date(d));
+            const buckets = {};
+            const labels = [];
+
+            const dateCursor = new Date(this.startDate);
+            const endDate = new Date(this.endDate);
+
+            while (dateCursor <= endDate) {
+                const key = dateCursor.toISOString().split('T')[0];
                 labels.push(key);
-                buckets[key] = {
-                    total: 0,
-                    other: 0,
-                };
+                buckets[key] = { total: 0, other: 0 };
                 for (const login of contributorLogins) {
                     buckets[key][login] = 0;
                 }
+                dateCursor.setDate(dateCursor.getDate() + 1);
             }
 
-            for (const commit of this.allCommits) {
-                const date = new Date(commit.commit.author.date);
-                const weekStart = new Date(date);
-                weekStart.setDate(weekStart.getDate() - (weekStart.getDay() + 6) % 7);
-                const key = formatKey(weekStart);
+            for (const commit of this.filteredCommits) {
+                const key = commit.commit.author.date.substring(0, 10);
+                const login = commit.author?.login;
                 if (!(key in buckets)) continue;
 
-                const login = commit.author?.login;
                 if (login && mainContributors.has(login)) {
                     buckets[key][login]++;
                     buckets[key].total++;
@@ -620,66 +680,56 @@ export default {
                 }
             }
 
-            const datasets = [];
-
-            datasets.push({
+            const datasets = [{
                 label: 'Total (Main Contributors)',
-                data: labels.map(label => buckets[label].total),
+                data: labels.map(l => buckets[l].total),
                 borderColor: '#2563eb',
                 backgroundColor: 'rgba(37, 99, 235, 0.1)',
-                pointBackgroundColor: '#2563eb',
                 tension: 0.3,
                 fill: true,
-            });
+            }];
 
             for (const login of contributorLogins) {
                 datasets.push({
                     label: login,
-                    data: labels.map(label => buckets[label][login]),
+                    data: labels.map(l => buckets[l][login]),
                     borderColor: this.getContributorColor(login),
                     backgroundColor: 'transparent',
                     tension: 0.3,
                 });
             }
 
-            return {
-                labels,
-                datasets,
-            };
+            return { labels, datasets };
         },
-
         linesPerWeekChartData() {
+            const contributorLogins = this.contributors.map(c => c.login);
+            const mainContributors = new Set(contributorLogins);
+
             const buckets = {};
-            const start = new Date(this.repository.created_at);
-            const end = new Date(this.repository.updated_at);
+            const labels = [];
 
-            // Igazítás hétfőre
-            const alignedStart = new Date(start);
-            alignedStart.setDate(alignedStart.getDate() - (alignedStart.getDay() + 6) % 7);
+            const dateCursor = new Date(this.startDate);
+            const endDate = new Date(this.endDate);
 
-            const weekKeys = [];
-            for (let d = new Date(alignedStart); d <= end; d.setDate(d.getDate() + 7)) {
-                const key = d.toISOString().split('T')[0];
-                weekKeys.push(key);
+            while (dateCursor <= endDate) {
+                const key = dateCursor.toISOString().split('T')[0];
+                labels.push(key);
                 buckets[key] = { total: 0, other: 0 };
-                for (const c of this.contributors) {
-                    buckets[key][c.login] = 0;
+                for (const login of contributorLogins) {
+                    buckets[key][login] = 0;
                 }
+                dateCursor.setDate(dateCursor.getDate() + 1);
             }
 
-            for (const commit of this.allCommits) {
-                const stats = commit.stats;
+            for (const commit of this.filteredCommits) {
+                const key = commit.commit.author.date.substring(0, 10);
                 const login = commit.author?.login;
-                if (!stats || !login) continue;
+                const stats = commit.stats;
+                if (!stats || !(key in buckets)) continue;
 
                 const lines = stats.additions + Math.abs(stats.deletions);
-                const date = new Date(commit.commit.author.date);
-                const weekStart = new Date(date);
-                weekStart.setDate(weekStart.getDate() - (weekStart.getDay() + 6) % 7);
-                const key = weekStart.toISOString().split('T')[0];
-                if (!buckets[key]) continue;
 
-                if (this.contributors.some(c => c.login === login)) {
+                if (login && mainContributors.has(login)) {
                     buckets[key][login] += lines;
                 } else {
                     buckets[key].other += lines;
@@ -688,38 +738,27 @@ export default {
                 buckets[key].total += lines;
             }
 
-            const datasets = [];
-
-            // Total
-            datasets.push({
+            const datasets = [{
                 label: 'Total (Main Contributors)',
-                data: weekKeys.map(k => buckets[k].total),
+                data: labels.map(k => buckets[k].total),
                 borderColor: '#22c55e',
                 backgroundColor: 'rgba(34,197,94,0.1)',
                 tension: 0.3,
                 fill: true,
-            });
+            }];
 
-            // Main contributors
-            for (const c of this.contributors) {
+            for (const login of contributorLogins) {
                 datasets.push({
-                    label: c.login,
-                    data: weekKeys.map(k => buckets[k][c.login]),
-                    borderColor: this.getContributorColor(c.login),
+                    label: login,
+                    data: labels.map(k => buckets[k][login]),
+                    borderColor: this.getContributorColor(login),
                     tension: 0.3,
                     fill: false,
                 });
             }
 
-            return {
-                labels: weekKeys,
-                datasets,
-            };
-        }
-
-
-
-
+            return { labels, datasets };
+        },
     }
 };
 </script>
@@ -1115,7 +1154,7 @@ html, body {
     font-size: 0.95rem;
 }
 
-.load-everything-button {
+.load-button {
     background-color: #2563eb;
     color: white;
     padding: 0.75rem 1.5rem;
@@ -1124,9 +1163,10 @@ html, body {
     font-weight: 600;
     cursor: pointer;
     margin-top: 1rem;
+    margin-right: 1rem
 }
 
-.load-everything-button:disabled {
+.load-button:disabled {
     background-color: #94a3b8;
     cursor: not-allowed;
 }
@@ -1230,8 +1270,9 @@ html, body {
 
 .baseline-control {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 0.5rem;
+    gap: 4px;
 }
 
 .baseline-control label {
@@ -1339,18 +1380,6 @@ html, body {
     color: #fcd34d;
 }
 
-.dash {
-    color: #94a3b8;
-}
-
-.back-button {
-    background-color: #334155;
-    color: #f1f5f9;
-    padding: 6px 12px;
-    border-radius: 6px;
-    text-decoration: none;
-}
-
 .header-content {
     display: flex;
     justify-content: space-between;
@@ -1392,23 +1421,6 @@ html, body {
     color: #fcd34d;
 }
 
-.status.no {
-    font-weight: bold;
-    color: #ef4444; /* piros */
-}
-
-.dash {
-    color: #94a3b8;
-}
-
-.back-button {
-    background-color: #334155;
-    color: #f1f5f9;
-    padding: 6px 12px;
-    border-radius: 6px;
-    text-decoration: none;
-}
-
 .commit-status .status-no {
     font-weight: bold;
     font-size: 14px;
@@ -1420,4 +1432,57 @@ html, body {
     font-size: 14px;
     color: #57aa44;
 }
+
+.baseline-note {
+    font-size: 0.85rem;
+    color: #6b7280; /* gray-500 */
+}
+
+.date-range-with-buttons {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-right: 2rem;
+    color: white;
+    font-weight: 500;
+}
+
+.date-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background-color: rgba(255, 255, 255, 0.1);
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+}
+
+.date-buttons {
+    margin-top: 4px;
+    display: flex;
+    gap: 0.25rem;
+}
+
+.date-buttons button {
+    padding: 4px 8px;
+    font-size: 0.9rem;
+    background-color: #0f172a;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.date-buttons button:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+.date-dash {
+    align-self: center;
+    font-size: 1.2rem;
+    margin: 0 0.5rem;
+    color: #9ca3af;
+}
+
 </style>
