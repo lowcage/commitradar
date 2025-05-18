@@ -106,6 +106,10 @@ Route::match(['GET', 'POST'], '/github/repository', function (Illuminate\Http\Re
     $startDate = $request->input('startDate', session('startDate'));
     $endDate = $request->input('endDate', session('endDate'));
 
+    $issues = [];
+    $page = 1;
+    $maxPages = 10;
+
     if (!$token) {
         return redirect('/')->with('auth_error', 'No GitHub token found. Please authenticate first.');
     }
@@ -187,6 +191,61 @@ Route::match(['GET', 'POST'], '/github/repository', function (Illuminate\Http\Re
         $repositoryData['closed_issues_count'] = $searchResult['total_count'];
     }
 
+    //Get latest 500 issues
+    while ($page <= $maxPages) {
+        $issuesResponse = Http::withToken($token)->get("https://api.github.com/repos/$owner/$repo/issues", [
+            'per_page' => 50,
+            'page' => $page,
+            'state' => 'all',
+            'direction' => 'desc',
+        ]);
+
+        if ($issuesResponse->failed()) break;
+
+        $pageIssues = $issuesResponse->json();
+
+        // Stop if no more issues
+        if (count($pageIssues) === 0) break;
+
+        foreach ($pageIssues as $issue) {
+            // Skip pull requests if needed (if you want only pure issues)
+            $isPR = isset($issue['pull_request']);
+
+            $issues[] = [
+                'id' => $issue['id'],
+                'number' => $issue['number'],
+                'title' => $issue['title'],
+                'body' => $issue['body'],
+                'state' => $issue['state'],
+                'created_at' => $issue['created_at'],
+                'closed_at' => $issue['closed_at'] ?? null,
+                'user' => [
+                    'login' => $issue['user']['login'] ?? null,
+                ],
+                'assignees' => array_map(fn($a) => $a['login'], $issue['assignees'] ?? []),
+                'closed_by' => $issue['closed_by']['login'] ?? null,
+                'milestone' => $issue['milestone']['title'] ?? null,
+                'pull_request' => $isPR,
+            ];
+        }
+
+        if (count($pageIssues) < 50) break;
+        $page++;
+    }
+
+    // Get milestones
+    $milestonesResponse = Http::withToken($token)
+        ->get("https://api.github.com/repos/$owner/$repo/milestones", [
+            'state' => 'all',
+            'per_page' => 100
+        ]);
+
+    $milestones = [];
+    if ($milestonesResponse->successful()) {
+        $milestones = $milestonesResponse->json();
+    }
+
+
     // Calculate total commits from contributors
     $totalCommits = 0;
     foreach ($contributors as &$contributor) {
@@ -218,7 +277,9 @@ Route::match(['GET', 'POST'], '/github/repository', function (Illuminate\Http\Re
         'owner' => $owner,
         'repo' => $repo,
         'startDate' => $startDate,
-        'endDate' => $endDate
+        'endDate' => $endDate,
+        'issues' => $issues,
+        'milestones' => $milestones
     ]);
 })->name('github.repository');
 

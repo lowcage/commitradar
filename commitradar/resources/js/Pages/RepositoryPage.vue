@@ -41,9 +41,9 @@
                             <span :class="allCommitsLoaded ? 'status-yes': 'status-no'">{{ allCommitsLoaded ? 'Yes' : 'No' }}</span>
                         </div>
                         <div class="commit-status">
-                            <span class="label"><span v-if="!detailedCommitsLoaded">⚠️</span>Commit details loaded:</span>
-                            <span :class="detailedCommitsLoaded ? 'status-yes' : 'status-no'">
-                                {{ detailedCommitsLoaded ? 'Yes' : 'No' }}
+                            <span class="label"><span v-if="!detailedCommitsLoaded && !commitsEmpty">⚠️</span>Commit details loaded:</span>
+                            <span :class="detailedCommitsLoaded || commitsEmpty ? 'status-yes' : 'status-no'">
+                                {{ detailedCommitsLoaded || commitsEmpty ? 'Yes' : 'No' }}
                             </span>
                         </div>
                     </div>
@@ -58,7 +58,7 @@
             </div>
         </div>
 
-        <div class="page-content">
+    <div class="page-content">
         <div class="info-grid">
             <div class="info-card">
                 <div class="info-header">
@@ -180,7 +180,7 @@
                                 class="hide-commits-btn"
                                 @click="toggleContributorVisibility(contributor.login)"
                             >
-                                {{ hiddenContributors.has(contributor.login) ? 'Show Commits' : 'Hide Commits' }}
+                                {{ hiddenContributors.has(contributor.login) ? 'Show Contributor' : 'Hide Contributor' }}
                             </button>
 
                             <!-- Header -->
@@ -246,103 +246,228 @@
             </div>
         </div>
 
-
-    <div class="info-card">
-        <div class="info-content">
-            <div class="info-header commit-header-bar">
-                <h3>Recent {{ allCommits.length }} Commits
-                    <span v-if="detailedCommitsLoaded">
+        <div class="info-card">
+                <div class="info-header commit-header-bar">
+                    <h3>Recent {{ allCommits.length }} Commits
+                        <span v-if="detailedCommitsLoaded">
                         ({{ filteredCommitsCount }} above baseline)
                     </span>
-                </h3>
-                <div v-if="detailedCommitsLoaded" class="baseline-control">
-                    <label for="baseline-slider">Baseline: {{ baseline }} lines</label>
-                    <input
-                        id="baseline-slider"
-                        type="range"
-                        min="0"
-                        max="50"
-                        step="1"
-                        v-model="baseline"
-                    />
-                    <span class="baseline-note">Commits below baseline do not affect scorings.</span>
-                </div>
-            </div>
-
-            <div class="commits-slider">
-                <div class="commits-track">
-                    <div v-if="commitsEmpty" class="no-commits">
-                        <strong>No commits found for the selected date range.</strong>
+                    </h3>
+                    <div v-if="detailedCommitsLoaded" class="baseline-control">
+                        <label for="baseline-slider">Baseline: {{ baseline }} lines</label>
+                        <input
+                            id="baseline-slider"
+                            type="range"
+                            min="0"
+                            max="50"
+                            step="1"
+                            v-model="baseline"
+                        />
+                        <span class="baseline-note">Commits below baseline do not affect scorings.</span>
                     </div>
-                    <div
-                        v-if="!commitsEmpty"
-                        v-for="commit in visibleCommits"
-                        :key="commit.sha"
-                        class="commit-card"
-                        :class="{ 'commit-muted': commit.stats && isBelowBaseline(commit) }"
-                    >
-                        <div class="commit-header">
-                            <img
-                                :src="commit.author?.avatar_url"
-                                :alt="commit.author?.login || commit.commit.author.name"
-                                class="commit-avatar"
+                </div>
+            <div class="info-content">
+            <div class="commits-slider">
+                    <div class="commits-track">
+                        <div v-if="commitsEmpty" class="no-commits">
+                            <strong>No commits found for the selected date range.</strong>
+                        </div>
+                        <div
+                            v-if="!commitsEmpty"
+                            v-for="commit in visibleCommits"
+                            :key="commit.sha"
+                            class="commit-card"
+                            :class="{ 'commit-muted': commit.stats && isBelowBaseline(commit) }"
+                        >
+                            <div class="commit-header">
+                                <img
+                                    :src="commit.author?.avatar_url"
+                                    :alt="commit.author?.login || commit.commit.author.name"
+                                    :style="{ border: '3px solid ' + getContributorColor(commit.author?.login) }"
+                                    class="commit-avatar"
+                                >
+                                <div class="commit-author">
+                                    <span class="author-name">{{ commit.author?.login || commit.commit.author.name }}</span>
+                                    <span class="commit-date">{{ formatDate(commit.commit.author.date) }}</span>
+                                </div>
+                            </div>
+
+                            <div class="commit-message">{{ commit.commit.message }}</div>
+
+                            <div
+                                v-if="commit.stats"
+                                class="commit-stats commit-stats-below"
                             >
-                            <div class="commit-author">
-                                <span class="author-name">{{ commit.author?.login || commit.commit.author.name }}</span>
-                                <span class="commit-date">{{ formatDate(commit.commit.author.date) }}</span>
+                                <span class="additions">+{{ commit.stats.additions }}</span>
+                                <span class="deletions">-{{ commit.stats.deletions }}</span>
+                            </div>
+
+                            <div class="commit-sha">
+                                <a :href="commit.html_url" target="_blank" class="sha-link">
+                                    {{ commit.sha.substring(0, 7) }}
+                                </a>
                             </div>
                         </div>
-
-                        <div class="commit-message">{{ commit.commit.message }}</div>
-
-                        <div
-                            v-if="commit.stats"
-                            class="commit-stats commit-stats-below"
-                        >
-                            <span class="additions">+{{ commit.stats.additions }}</span>
-                            <span class="deletions">-{{ commit.stats.deletions }}</span>
-                        </div>
-
-                        <div class="commit-sha">
-                            <a :href="commit.html_url" target="_blank" class="sha-link">
-                                {{ commit.sha.substring(0, 7) }}
-                            </a>
-                        </div>
                     </div>
                 </div>
-            </div>
 
-            <div class="load-commits-details-wrapper">
-                <button
-                    @click="loadMoreCommits"
-                    :disabled="loadingMore || !hasMoreCommits || allCommitsLoaded"
-                    class="load-button"
-                >
-                    {{ loadingMore ? 'Loading More Commits...' : 'Load All Commits' }}
-                </button>
-                <button
-                    @click="loadAllCommitDetails(5)"
-                    class="load-button"
-                    :disabled="loadingDetailed || !hasCommitsWithoutDetails"
-                >
+                <div class="load-commits-details-wrapper">
+                    <button
+                        @click="loadMoreCommits"
+                        :disabled="loadingMore || !hasMoreCommits || allCommitsLoaded"
+                        class="load-button"
+                    >
+                        {{ loadingMore ? 'Loading More Commits...' : 'Load All Commits' }}
+                    </button>
+                    <button
+                        @click="loadAllCommitDetails(5)"
+                        class="load-button"
+                        :disabled="loadingDetailed || !hasCommitsWithoutDetails"
+                    >
                     <span v-if="loadingDetailed">
                         Loading details... {{ detailedProgress }}/{{ allCommits.length }}
                     </span>
-                                    <span v-else>
+                        <span v-else>
                         Load Details for Recent Commits
                     </span>
-                </button>
-            </div>
+                    </button>
+                </div>
 
+            </div>
         </div>
-    </div>
 
         <div class="charts-row">
             <CommitActivityChart :chart-data="commitActivityChartData" :key="chartKey"/>
             <LinesActivityChart :chart-data="linesPerWeekChartData" :key="linesChartKey" />
         </div>
+
+        <div class="info-card issue-section">
+            <div class="info-header commit-header-bar">
+                <h3>Recent {{ issues.length }} Issues and Pull Requests <i>(maximum 500)</i></h3>
+                <div class="issue-filter-bar">
+                    <div class="filter-row">
+                        <label>
+                            State:
+                            <select v-model="issueStateFilter">
+                                <option value="all">All</option>
+                                <option value="open">Open</option>
+                                <option value="closed">Closed</option>
+                            </select>
+                        </label>
+
+                        <label>
+                            Milestone:
+                            <select v-model="selectedMilestone">
+                                <option :value="null">All</option>
+                                <option v-for="m in availableMilestones" :key="m" :value="m">{{ m }}</option>
+                            </select>
+                        </label>
+                    </div>
+
+                    <div class="filter-row checkbox-row">
+                        <label>
+                            <input type="checkbox" v-model="showPullRequests" />
+                            Show Pull Requests
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="info-content">
+            <div class="issues-slider">
+                    <div class="issues-track">
+                        <div
+                            v-if="issues.length === 0"
+                            class="no-commits"
+                        >
+                            <strong>No issues found.</strong>
+                        </div>
+
+                        <div
+                            v-for="issue in filteredIssues"
+                            :key="issue.id"
+                            class="commit-card"
+                            :class="{
+                                'commit-closed': issue.state === 'closed',
+                                'commit-open': issue.state === 'open'}"
+                            >
+                            <!-- Fejléc: avatar + login + dátum -->
+                            <div class="commit-header">
+                                <img
+                                    :src="getAvatarForLogin(issue.user?.login)"
+                                    :alt="issue.user?.login"
+                                    class="commit-avatar"
+                                    :style="{ border: '3px solid ' + getContributorColor(issue.user?.login) }"
+                                />
+                                <div class="commit-author">
+                                    <span class="author-name">{{ issue.user?.login }}</span>
+                                    <span class="commit-date">{{ formatDate(issue.created_at) }}</span>
+                                </div>
+                            </div>
+
+                            <!-- Cím -->
+                            <div class="commit-message">
+                                <a
+                                    :href="`https://github.com/${owner}/${repo}/issues/${issue.number}`"
+                                    target="_blank"
+                                    class="sha-link"
+                                >
+                                    <span class="text-gray-400">#{{ issue.number }}</span> – {{ issue.title }}
+                                </a>
+                            </div>
+
+                            <!-- Metaadatok -->
+                            <div class="commit-meta">
+                                <div>
+                                    <strong>Assigned: </strong>
+                                    <span v-if="issue.assignees && issue.assignees.length">
+        {{ issue.assignees.slice(0, 2).join(', ') }}
+      </span>
+                                    <span v-else>–</span>
+                                </div>
+
+                                <div v-if="issue.state === 'closed'">
+                                    <strong>Closed:</strong>
+                                    {{ formatDate(issue.closed_at) }} by
+                                    {{ issue.closed_by|| 'unknown' }}
+                                </div>
+                            </div>
+
+                            <div class="issue-footer">
+                                <div class="issue-milestone">
+                                    {{ issue.milestone || 'No milestone' }}
+                                </div>
+                                <div class="issue-pr" v-if="issue.pull_request">
+                                    <span class="pr-badge">PR</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
+
+        <div class="info-card">
+                <div class="info-header">
+                    <h3>Milestones</h3>
+                </div>
+            <div class="info-content">
+            <ul class="milestone-list">
+                    <li v-for="m in milestones" :key="m.id" class="milestone-item">
+                        <strong>{{ m.title }}</strong> — {{ m.state }}
+                        <div class="milestone-meta">
+                            {{ m.open_issues }} open / {{ m.closed_issues }} closed |
+                            Due: {{ formatDate(m.due_on) }}
+                        </div>
+                        <p class="milestone-desc">{{ m.description }}</p>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+
+
     </div>
+</div>
 </template>
 
 <script>
@@ -367,6 +492,9 @@ export default {
             chartKey: 0,
             linesChartKey: 0,
             allCommitsLoaded: !this.hasMoreCommits,
+            showPullRequests: true,
+            issueStateFilter: 'all',
+            selectedMilestone: null,
         };
     },
 
@@ -405,7 +533,9 @@ export default {
         startDate: { type: String, required: true },
         endDate: { type: String, required: true },
         hasMoreCommits: Boolean,
-        commitsEmpty: Boolean
+        commitsEmpty: Boolean,
+        issues: {type:Array, required:true},
+        milestones: {type:Array, required:true}
     },
     methods: {
         async loadMoreCommits() {
@@ -533,8 +663,13 @@ export default {
         },
 
         formatDate(dateString) {
+            if (!dateString) return 'No due date';
             const options = { year: 'numeric', month: 'long', day: 'numeric' };
             return new Date(dateString).toLocaleDateString(undefined, options);
+        },
+        getAvatarForLogin(login) {
+            const match = this.contributors.find(c => c.login === login);
+            return match?.avatar_url || 'https://avatars.githubusercontent.com/u/0?v=4';
         },
         commitLines(commit) {
             const stats = commit.stats;
@@ -611,6 +746,10 @@ export default {
                 endDate: this.localEndDate,
             });
         },
+        truncate(text, length) {
+            if (!text) return '';
+            return text.length <= length ? text : text.slice(0, length) + '...';
+        },
     },
     watch: {
         baseline(newVal) {
@@ -625,6 +764,12 @@ export default {
                 const stats = c.stats;
                 return stats && (stats.additions + Math.abs(stats.deletions)) >= this.baseline;
             });
+        },
+        availableMilestones() {
+            const titles = this.issues
+                .map(i => i.milestone)
+                .filter(m => m);
+            return [...new Set(titles)];
         },
         filteredCommitsCount() {
             return this.allCommits.filter(commit => {
@@ -759,6 +904,26 @@ export default {
 
             return { labels, datasets };
         },
+        sortedIssues() {
+            return [...this.issues].sort(
+                (a, b) => new Date(b.created_at) - new Date(a.created_at)
+            );
+        },
+        filteredIssues() {
+            return this.sortedIssues.filter(issue => {
+                if (!this.showPullRequests && issue.pull_request) return false;
+                if (this.issueStateFilter !== 'all' && issue.state !== this.issueStateFilter) return false;
+                if (this.selectedMilestone && issue.milestone !== this.selectedMilestone) return false;
+
+                const login = issue.user?.login;
+                if (login && this.hiddenContributors.has(login)) return false;
+
+                return true;
+            });
+        },
+    },
+    mounted() {
+        console.log(this.issues)
     }
 };
 </script>
@@ -815,7 +980,7 @@ html, body {
     margin-bottom: 2rem;
 }
 
-.info-card, .contributor-card {
+.info-card {
     background: white;
     border-radius: 12px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
@@ -825,6 +990,7 @@ html, body {
     background: #f8fafc;
     padding: 1rem 1.5rem;
     border-bottom: 1px solid #e5e7eb;
+    margin-bottom: 1rem;
 }
 
 .info-header h3 {
@@ -959,14 +1125,14 @@ html, body {
     }
 }
 
-.commits-slider {
+.commits-slider, .issues-slider {
     width: 100%;
     overflow-x: auto;
     padding: 1rem 0;
     scroll-behavior: smooth;
 }
 
-.commits-track {
+.commits-track, .issues-track {
     display: flex;
     gap: 1rem;
     padding: 0.5rem;
@@ -1329,6 +1495,7 @@ html, body {
     justify-content: space-between;
     gap: 1rem; /* kisebb hézag */
     margin-top: 2rem;
+    margin-bottom: 4rem;
 }
 
 .charts-row .info-card {
@@ -1484,5 +1651,117 @@ html, body {
     margin: 0 0.5rem;
     color: #9ca3af;
 }
+
+.contributor-avatar-large {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 3px solid;
+}
+
+.issue-body {
+    font-size: 0.9rem;
+    color: #444;
+    margin-bottom: 0.25rem;
+}
+.issue-info p {
+    margin: 0.25rem 0;
+    font-size: 0.85rem;
+}
+
+.commit-card.commit-closed {
+    border-left: 5px solid #dc2626; /* piros */
+}
+
+.commit-card.commit-open {
+    border-left: 5px solid #22c55e; /* zöld */
+}
+
+.issue-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 1rem;
+    font-size: 0.8rem;
+    color: #374151;
+}
+
+.issue-milestone {
+    font-weight: 500;
+    color: #6b7280;
+}
+
+.issue-pr .pr-badge {
+    background-color: #2563eb;
+    color: white;
+    font-size: 0.7rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 6px;
+    font-weight: 600;
+}
+
+.issue-filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    padding: 0 1rem;
+    font-size: 0.9rem;
+    color: #374151;
+}
+
+.issue-filter-bar label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.milestone-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.milestone-item {
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.milestone-meta {
+    font-size: 0.85rem;
+    color: #6b7280;
+}
+
+.milestone-desc {
+    font-size: 0.9rem;
+    color: #374151;
+}
+
+.issue-section {
+    margin-bottom: 4rem;
+}
+
+.issue-filter-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    padding: 0 1rem;
+    font-size: 0.9rem;
+    color: #374151;
+}
+
+.issue-filter-bar .filter-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.issue-filter-bar .checkbox-row {
+    margin-top: 0.25rem;
+}
+
 
 </style>
