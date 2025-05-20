@@ -191,9 +191,9 @@
 
                             <!-- Meta -->
                             <div class="contributor-meta">
-                                <span>{{ contributor.contributions }} commits</span>
+                                <span>{{ contributor.contributions }} total commits</span>
                                 <span v-if="contributor.filtered_lines_total > 0">
-                            {{ contributor.filtered_lines_total }} lines changed
+                            {{ contributor.filtered_lines_total }} lines changed (recent commits)
                         </span>
                             </div>
 
@@ -212,7 +212,8 @@
                                     <div class="stat-label">Lines/Day</div>
                                 </div>
                                 <div class="stat-box">
-                                    <div class="stat-value">12</div>
+                                    <div class="stat-value">{{ contributor.activeDays ? contributor.activeDays.size : 0 }}
+                                    </div>
                                     <div class="stat-label">Active Days</div>
                                 </div>
                                 <div class="stat-box">
@@ -344,6 +345,7 @@
         <div class="info-card issue-section">
             <div class="info-header commit-header-bar">
                 <h3>Recent {{ issues.length }} Issues and Pull Requests <i>(maximum 500)</i></h3>
+                <span class="baseline-note">Issues and PRs outside of filter range are grayscaled, and do not effect scorings.</span>
                 <div class="issue-filter-bar">
                     <div class="filter-row">
                         <label>
@@ -388,7 +390,9 @@
                             class="commit-card"
                             :class="{
                                 'commit-closed': issue.state === 'closed',
-                                'commit-open': issue.state === 'open'}"
+                                'commit-open': issue.state === 'open',
+                                'commit-muted': !isIssueInDateRange(issue)
+                            }"
                             >
                             <!-- Fejléc: avatar + login + dátum -->
                             <div class="commit-header">
@@ -681,25 +685,57 @@ export default {
         },
 
         calculateFilteredContributorStats() {
-            // nullázás minden meglévő contributorra
+            const start = new Date(this.startDate);
+            const end = new Date(this.endDate);
+
             this.contributors.forEach(contributor => {
                 contributor.filtered_lines_total = 0;
+                contributor.activeDays = new Set();
             });
 
-            // commitokon végigmegyünk
             this.allCommits.forEach(commit => {
+                const login = commit.author?.login;
                 const stats = commit.stats;
-                const authorLogin = commit.author?.login;
+                const date = commit.commit.author.date.substring(0, 10);
+                const commitDate = new Date(date);
 
-                if (!stats || !authorLogin) return;
+                if (!login || !stats) return;
+
+                const contributor = this.contributors.find(c => c.login === login);
+                if (!contributor) return;
 
                 const lines = stats.additions + Math.abs(stats.deletions);
-                if (lines < this.baseline) return;
-
-                const contributor = this.contributors.find(c => c.login === authorLogin);
-                if (contributor) {
+                if (lines >= this.baseline) {
                     contributor.filtered_lines_total += lines;
                 }
+
+                if (commitDate >= start && commitDate <= end) {
+                    contributor.activeDays.add(date);
+                }
+            });
+
+            this.issues.forEach(issue => {
+                const login = issue.user?.login;
+                if (!login) return;
+
+                const contributor = this.contributors.find(c => c.login === login);
+                if (!contributor) return;
+
+                const created = new Date(issue.created_at);
+                const closed = issue.closed_at ? new Date(issue.closed_at) : null;
+
+                if (created >= start && created <= end) {
+                    contributor.activeDays.add(issue.created_at.substring(0, 10));
+                }
+
+                if (closed && closed >= start && closed <= end && issue.closed_by?.login === login) {
+                    contributor.activeDays.add(issue.closed_at.substring(0, 10));
+                }
+            });
+
+            // Opcionálisan készíthetsz számértéket is
+            this.contributors.forEach(c => {
+                c.activeDayCount = c.activeDays.size;
             });
         },
         toggleContributorVisibility(login) {
@@ -749,6 +785,15 @@ export default {
         truncate(text, length) {
             if (!text) return '';
             return text.length <= length ? text : text.slice(0, length) + '...';
+        },
+        isIssueInDateRange(issue) {
+            const created = new Date(issue.created_at);
+            const closed = issue.closed_at ? new Date(issue.closed_at) : null;
+            const start = new Date(this.startDate);
+            const end = new Date(this.endDate);
+
+            return (created >= start && created <= end) ||
+                (closed && closed >= start && closed <= end);
         },
     },
     watch: {
@@ -923,7 +968,47 @@ export default {
         },
     },
     mounted() {
-        console.log(this.issues)
+        this.contributors.forEach(c => {
+            c.activeDays = new Set();
+        });
+
+        this.allCommits.forEach(commit => {
+            const login = commit.author?.login;
+            if (!login) return;
+
+            const date = commit.commit.author.date.substring(0, 10);
+            const commitDate = new Date(date);
+            const start = new Date(this.startDate);
+            const end = new Date(this.endDate);
+
+            if (commitDate >= start && commitDate <= end) {
+                const contributor = this.contributors.find(c => c.login === login);
+                if (contributor) {
+                    contributor.activeDays.add(date);
+                }
+            }
+        });
+
+        this.issues.forEach(issue => {
+            const login = issue.user?.login;
+            if (!login) return;
+
+            const start = new Date(this.startDate);
+            const end = new Date(this.endDate);
+
+            const created = new Date(issue.created_at);
+            const closed = issue.closed_at ? new Date(issue.closed_at) : null;
+
+            const contributor = this.contributors.find(c => c.login === login);
+            if (!contributor) return;
+
+            if (created >= start && created <= end) {
+                contributor.activeDays.add(issue.created_at.substring(0, 10));
+            }
+            if (closed && closed >= start && closed <= end && issue.closed_by?.login === login) {
+                contributor.activeDays.add(issue.closed_at.substring(0, 10));
+            }
+        });
     }
 };
 </script>
