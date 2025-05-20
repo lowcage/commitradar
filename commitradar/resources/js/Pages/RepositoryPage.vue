@@ -179,12 +179,21 @@
                             :class="{ 'contributor-hidden': hiddenContributors.has(contributor.login) }"
                         >
                             <!-- Hide button -->
-                            <button
-                                class="hide-commits-btn"
-                                @click="toggleContributorVisibility(contributor.login)"
-                            >
-                                {{ hiddenContributors.has(contributor.login) ? 'Show Contributor' : 'Hide Contributor' }}
-                            </button>
+                            <div class="contributor-actions">
+                                <button
+                                    class="hide-commits-btn"
+                                    @click="toggleContributorVisibility(contributor.login)"
+                                >
+                                    {{ hiddenContributors.has(contributor.login) ? 'Show Contributor' : 'Hide Contributor' }}
+                                </button>
+
+                                <button
+                                    class="hide-commits-btn"
+                                    @click="showOnlyContributor(contributor.login)"
+                                >
+                                    Show Only This Contributor
+                                </button>
+                            </div>
 
                             <!-- Header -->
                             <div class="contributor-header">
@@ -766,6 +775,13 @@ export default {
             } else {
                 this.hiddenContributors.add(login);
             }
+        },
+        showOnlyContributor(login) {
+            this.hiddenContributors = new Set(
+                this.contributors
+                    .map(c => c.login)
+                    .filter(l => l !== login)
+            );
         },
         generateColorFromString(str) {
             let hash = 0;
@@ -1568,24 +1584,6 @@ html, body {
     margin-top: 0.5rem;
 }
 
-.hide-commits-btn {
-    position: absolute;
-    top: 0.5rem;
-    right: 0.5rem;
-    background: #f3f4f6;
-    border: none;
-    padding: 0.25rem 0.6rem;
-    border-radius: 6px;
-    font-size: 0.75rem;
-    cursor: pointer;
-    transition: background-color 0.2s;
-    z-index: 2;
-}
-
-.hide-commits-btn:hover {
-    background: #e5e7eb;
-}
-
 .contributor-hidden {
     opacity: 0.4;
     filter: grayscale(80%);
@@ -1892,6 +1890,31 @@ html, body {
     font-weight: 600;
     cursor: pointer;
 }
+
+.contributor-actions {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    z-index: 2;
+}
+
+.hide-commits-btn {
+    background: #f3f4f6;
+    border: none;
+    padding: 0.25rem 0.6rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.hide-commits-btn:hover {
+    background: #e5e7eb;
+}
+
 
 
 </style>
