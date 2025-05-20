@@ -9,7 +9,10 @@
                         <span class="repo-name">{{ owner }} / {{ repo }}</span>
                     </h1>
                 </div>
-
+                <div class="token-input-group">
+                    <input v-model="localToken" type="text" placeholder="Enter OpenAI API Key..." class="token-input" />
+                    <button @click="saveToken" class="token-save-button">Save Token</button>
+                </div>
                 <div class="center-section">
                     <div class="date-range-with-buttons">
                         <div class="date-group">
@@ -224,11 +227,6 @@
                                     <div class="stat-value">9%</div>
                                     <div class="stat-label">Churn Rate</div>
                                 </div>
-                            </div>
-
-                            <div class="contributor-final-score">
-                                <span class="score-label">Score: </span>
-                                <span class="score-value">7.8 / 10</span>
                             </div>
                         </div>
                     </div>
@@ -499,6 +497,7 @@ export default {
             showPullRequests: true,
             issueStateFilter: 'all',
             selectedMilestone: null,
+            localToken: this.openai_token || '',
         };
     },
 
@@ -539,7 +538,8 @@ export default {
         hasMoreCommits: Boolean,
         commitsEmpty: Boolean,
         issues: {type:Array, required:true},
-        milestones: {type:Array, required:true}
+        milestones: {type:Array, required:true},
+        openai_token: String
     },
     methods: {
         async loadMoreCommits() {
@@ -664,6 +664,28 @@ export default {
             this.calculateFilteredContributorStats();
             this.chartKey++;
             this.linesChartKey++;
+        },
+
+        async saveToken() {
+            try {
+                const response = await fetch(route('github.save.token'), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                    },
+                    body: JSON.stringify({ openai_token: this.localToken })
+                });
+
+                if (response.ok) {
+                    alert("Token saved successfully!");
+                } else {
+                    alert("Failed to save token.");
+                }
+            } catch (error) {
+                console.error("Error saving token:", error);
+                alert("Error occurred while saving token.");
+            }
         },
 
         formatDate(dateString) {
@@ -1846,6 +1868,29 @@ html, body {
 
 .issue-filter-bar .checkbox-row {
     margin-top: 0.25rem;
+}
+
+.token-input-group {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+.token-input {
+    padding: 0.5rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    flex: 1;
+}
+
+.token-save-button {
+    background-color: #2563eb;
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    border: none;
+    font-weight: 600;
+    cursor: pointer;
 }
 
 

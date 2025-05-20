@@ -279,7 +279,8 @@ Route::match(['GET', 'POST'], '/github/repository', function (Illuminate\Http\Re
         'startDate' => $startDate,
         'endDate' => $endDate,
         'issues' => $issues,
-        'milestones' => $milestones
+        'milestones' => $milestones,
+        'openai_token' => session('openai_token', '')
     ]);
 })->name('github.repository');
 
@@ -311,6 +312,15 @@ Route::post('/github/commits/details', function (Request $request) {
 
     return response()->json($results);
 })->name('github.commits.details');
+
+Route::post('/github/save-token', function (Illuminate\Http\Request $request) {
+    $request->validate([
+        'openai_token' => 'required|string',
+    ]);
+    session(['openai_token' => $request->input('openai_token')]);
+    return response()->json(['status' => 'ok']);
+})->name('github.save.token');
+
 
 //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
 
