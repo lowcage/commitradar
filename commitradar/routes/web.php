@@ -288,7 +288,7 @@ Route::post('/github/commits/details', function (Request $request) {
     $token = session('github_token');
     $owner = $request->input('owner');
     $repo = $request->input('repo');
-    $shas = $request->input('shas'); // ez egy tömb lesz
+    $shas = $request->input('shas');
 
     if (!$token || !$owner || !$repo || !is_array($shas)) {
         return response()->json(['error' => 'Invalid parameters'], 400);
@@ -302,16 +302,21 @@ Route::post('/github/commits/details', function (Request $request) {
 
         if ($response->successful()) {
             $commitData = $response->json();
+            $files = $commitData['files'] ?? [];
             $results[] = [
                 'sha' => $sha,
                 'additions' => $commitData['stats']['additions'] ?? 0,
                 'deletions' => $commitData['stats']['deletions'] ?? 0,
+                'fileCount' => count($files),
+                'files' => collect($files)->pluck('filename')->toArray(), // used for touched stats
             ];
         }
     }
 
     return response()->json($results);
 })->name('github.commits.details');
+
+
 
 Route::post('/github/save-token', function (Illuminate\Http\Request $request) {
     $request->validate([

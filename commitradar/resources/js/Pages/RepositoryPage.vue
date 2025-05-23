@@ -209,32 +209,106 @@
                         </span>
                             </div>
 
-                            <!-- Dummy stat grid -->
                             <div class="contributor-stat-grid">
+                                <!-- Avg. Commit Score -->
                                 <div class="stat-box">
                                     <div class="stat-value">5.3</div>
-                                    <div class="stat-label">Avg. Commit Score</div>
-                                </div>
-                                <div class="stat-box">
-                                    <div class="stat-value">9%</div>
-                                    <div class="stat-label">Of All Commits</div>
-                                </div>
-                                <div class="stat-box">
-                                    <div class="stat-value">87</div>
-                                    <div class="stat-label">Lines/Day</div>
-                                </div>
-                                <div class="stat-box">
-                                    <div class="stat-value">{{ contributor.activeDays ? contributor.activeDays.size : 0 }}
+                                    <div class="stat-label">
+                                        Avg. Commit Score
+                                        <br>
+                                        <div class="dependency-badge ai">AI</div>
+                                        <div class="dependency-badge details">Details</div>
                                     </div>
-                                    <div class="stat-label">Active Days</div>
                                 </div>
+
+                                <!-- % of Recent Commits -->
+                                <div class="stat-box">
+                                    <div class="stat-value">{{ contributor.percentRecentCommits }}%</div>
+                                    <div class="stat-label">
+                                        % of Recent Commits
+                                        <!-- no data dep, just hint -->
+                                        <div class="dependency-badge">Enhanced by Details</div>
+                                    </div>
+                                </div>
+
+                                <!-- Lines/Day -->
+                                <div class="stat-box">
+                                    <div class="stat-value">
+                                          <span v-if="detailedCommitsLoaded && contributor.activeCommitDayCount > 0">
+                                            {{ Math.round(contributor.filtered_lines_total / contributor.activeCommitDayCount) }}
+                                          </span>
+                                        <span v-else>N/A</span>
+                                    </div>
+                                    <div class="stat-label">
+                                        Lines/Day
+                                        <div class="dependency-badge details">Details</div>
+                                    </div>
+                                </div>
+
+                                <!-- Active Commit Days -->
+                                <div class="stat-box">
+                                    <div class="stat-value">{{ contributor.activeCommitDayCount }}</div>
+                                    <div class="stat-label">
+                                        Active Commit Days
+                                        <div class="dependency-badge">Enhanced by Details</div>
+                                    </div>
+                                </div>
+
+                                <!-- Commit Msg Quality -->
                                 <div class="stat-box">
                                     <div class="stat-value">76%</div>
-                                    <div class="stat-label">Commit message quality</div>
+                                    <div class="stat-label">
+                                        Commit Msg Quality
+                                        <br>
+                                        <div class="dependency-badge ai">AI</div>
+                                    </div>
+                                </div>
+
+                                <!-- Churn Rate -->
+                                <div class="stat-box">
+                                    <div class="stat-value">
+                                        <span v-if="detailedCommitsLoaded">
+                                          {{ (contributor.churnRate * 100).toFixed(1) }}%
+                                        </span>
+                                        <span v-else>N/A</span>
+                                    </div>
+                                    <div class="stat-label">
+                                        Churn Rate
+                                        <div class="dependency-badge details">Details</div>
+                                    </div>
+                                </div>
+
+                                <!-- Files Touched -->
+                                <div class="stat-box">
+                                    <div class="stat-value">
+                                        <span v-if="detailedCommitsLoaded">{{ contributor.filesTouched }}</span>
+                                        <span v-else>N/A</span>
+                                    </div>
+                                    <div class="stat-label">Unique Files Touched</div>
+                                    <div class="dependency-badge details">Details</div>
+                                </div>
+                            </div>
+
+
+                            <hr class="stat-divider" />
+
+                            <div class="contributor-stat-grid">
+                                <!-- Issues -->
+                                <div class="stat-box">
+                                    <div class="stat-value">{{ contributor.openedIssues }}</div>
+                                    <div class="stat-label">Issues Opened</div>
                                 </div>
                                 <div class="stat-box">
-                                    <div class="stat-value">9%</div>
-                                    <div class="stat-label">Churn Rate</div>
+                                    <div class="stat-value">{{ contributor.closedIssues }}</div>
+                                    <div class="stat-label">Issues Closed</div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-value">{{contributor.pullRequests}}</div>
+                                    <div class="stat-label">PRs Merged</div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-value">{{ contributor.activeIssueDayCount }}</div>
+                                    <div class="stat-label">Active Issue Days</div>
                                 </div>
                             </div>
                         </div>
@@ -243,6 +317,10 @@
                     <div class="contributor-notes">
                         <p class="info-note">
                             Note: Only main contributors are listed here. Some commits might belong to other authors.
+                        </p>
+                        <p class="info-note">
+                            🧠 <strong>AI</strong> = Requires OpenAI API key and evaluation for scoring . <br>
+                            🧾 <strong>Details</strong> = Needs full commit data to calculate accurate metrics.
                         </p>
                         <p v-if="allCommits.length > totalCommits" class="info-note info-warning">
                             ⚠️ Discrepancy detected: More commits found than contributors' total.
@@ -308,6 +386,7 @@
                             >
                                 <span class="additions">+{{ commit.stats.additions }}</span>
                                 <span class="deletions">-{{ commit.stats.deletions }}</span>
+                                <span class="filecount">🗂 {{ commit.stats.fileCount || commit.stats.files?.length || 0 }} files</span>
                             </div>
 
                             <div class="commit-sha">
@@ -320,6 +399,9 @@
                 </div>
 
                 <div class="load-commits-details-wrapper">
+                    <button @click="testOpenAI" class="load-button">
+                        Test OpenAI
+                    </button>
                     <button
                         @click="loadMoreCommits"
                         :disabled="loadingMore || !hasMoreCommits || allCommitsLoaded"
@@ -340,7 +422,6 @@
                     </span>
                     </button>
                 </div>
-
             </div>
         </div>
 
@@ -608,6 +689,10 @@ export default {
             } finally {
                 this.loadingMore = false;
                 this.allCommitsLoaded = true;
+                this.calculateCommitData();
+                if (this.detailedCommitsLoaded) {
+                    this.calculateFilesTouched();
+                }
             }
         },
 
@@ -640,10 +725,10 @@ export default {
                         const detailedBatch = await response.json();
 
                         detailedBatch.forEach(commit => {
-                            // mentjük külön map-be
                             this.detailedCommits[commit.sha] = {
                                 additions: commit.additions,
                                 deletions: commit.deletions,
+                                files: commit.files || []
                             };
 
                             // és frissítjük az allCommits tömbben is, hogy a UI lássa
@@ -652,6 +737,8 @@ export default {
                                 found.stats = {
                                     additions: commit.additions,
                                     deletions: commit.deletions,
+                                    files: commit.files || 0,
+                                    fileCount: commit.fileCount || (commit.files?.length ?? 0)
                                 };
                             }
                         });
@@ -670,9 +757,11 @@ export default {
             }
 
             this.loadingDetailed = false;
-            this.calculateFilteredContributorStats();
             this.chartKey++;
             this.linesChartKey++;
+            this.calculateCommitData();
+            this.calculateChurnRate();
+            this.calculateFilesTouched();
         },
 
         async saveToken() {
@@ -697,6 +786,37 @@ export default {
             }
         },
 
+        async testOpenAI() {
+            try {
+                const response = await fetch("https://api.openai.com/v1/chat/completions", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${this.localToken}`
+                    },
+                    body: JSON.stringify({
+                        model: "gpt-3.5-turbo",
+                        messages: [
+                            { role: "system", content: "You are a helpful assistant." },
+                            { role: "user", content: "Hello!" }
+                        ]
+                    })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    console.error("OpenAI error:", error);
+                    return;
+                }
+
+                const result = await response.json();
+                const message = result.choices?.[0]?.message?.content || "No response message.";
+                console.log("OpenAI response:", message);
+            } catch (error) {
+                console.error("Error calling OpenAI:", error);
+            }
+        },
+
         formatDate(dateString) {
             if (!dateString) return 'No due date';
             const options = { year: 'numeric', month: 'long', day: 'numeric' };
@@ -714,35 +834,15 @@ export default {
         isBelowBaseline(commit) {
             return this.commitLines(commit) < this.baseline;
         },
-
-        calculateFilteredContributorStats() {
+        calculateIssueData() {
             const start = new Date(this.startDate);
             const end = new Date(this.endDate);
 
-            this.contributors.forEach(contributor => {
-                contributor.filtered_lines_total = 0;
-                contributor.activeDays = new Set();
-            });
-
-            this.allCommits.forEach(commit => {
-                const login = commit.author?.login;
-                const stats = commit.stats;
-                const date = commit.commit.author.date.substring(0, 10);
-                const commitDate = new Date(date);
-
-                if (!login || !stats) return;
-
-                const contributor = this.contributors.find(c => c.login === login);
-                if (!contributor) return;
-
-                const lines = stats.additions + Math.abs(stats.deletions);
-                if (lines >= this.baseline) {
-                    contributor.filtered_lines_total += lines;
-                }
-
-                if (commitDate >= start && commitDate <= end) {
-                    contributor.activeDays.add(date);
-                }
+            this.contributors.forEach(c => {
+                c.activeIssueDays = new Set();
+                c.openedIssues = 0;
+                c.closedIssues = 0;
+                c.pullRequests = 0;
             });
 
             this.issues.forEach(issue => {
@@ -755,18 +855,120 @@ export default {
                 const created = new Date(issue.created_at);
                 const closed = issue.closed_at ? new Date(issue.closed_at) : null;
 
-                if (created >= start && created <= end) {
-                    contributor.activeDays.add(issue.created_at.substring(0, 10));
-                }
+                if(this.isIssueInDateRange(issue)) {
+                    if (issue.pull_request && issue.closed_at !== null) {
+                        contributor.pullRequests++;
+                    }
 
-                if (closed && closed >= start && closed <= end && issue.closed_by?.login === login) {
-                    contributor.activeDays.add(issue.closed_at.substring(0, 10));
+                    if(created >= start && created <= end) {
+                        contributor.openedIssues++
+                        contributor.activeIssueDays.add(issue.created_at.substring(0, 10));
+                    }
+
+                    if (closed >= start && created <= end) {
+                        contributor.closedIssues++
+                        contributor.activeIssueDays.add(issue.closed_at.substring(0, 10));
+                    }
                 }
             });
 
-            // Opcionálisan készíthetsz számértéket is
             this.contributors.forEach(c => {
-                c.activeDayCount = c.activeDays.size;
+                c.activeIssueDayCount = c.activeIssueDays.size;
+                c.closedIssues -= c.pullRequests
+                c.openedIssues -= c.pullRequests
+            });
+        },
+        calculateCommitData() {
+            const start = new Date(this.startDate);
+            const end = new Date(this.endDate);
+
+            this.contributors.forEach(c => {
+                c.activeCommitDays = new Set();
+                c.filtered_lines_total = 0;
+                c.baselineCommitCount = 0;
+            });
+
+            let totalFilteredCommits = 0;
+
+            this.allCommits.forEach(commit => {
+                const login = commit.author?.login;
+                if (!login) return;
+
+                const date = commit.commit.author.date.substring(0, 10);
+                const commitDate = new Date(date);
+                const contributor = this.contributors.find(c => c.login === login);
+                if (!contributor) return;
+
+                if (commitDate >= start && commitDate <= end) {
+                    const stats = commit.stats;
+
+                    if (!stats) {
+                        contributor.activeCommitDays.add(date);
+                        contributor.baselineCommitCount++;
+                        totalFilteredCommits++;
+                    } else {
+                        const lines = stats.additions + Math.abs(stats.deletions);
+                        if (lines >= this.baseline) {
+                            contributor.activeCommitDays.add(date);
+                            contributor.filtered_lines_total += lines;
+                            contributor.baselineCommitCount++;
+                            totalFilteredCommits++;
+                        }
+                    }
+                }
+            });
+
+            this.contributors.forEach(c => {
+                c.activeCommitDayCount = c.activeCommitDays.size;
+                c.percentRecentCommits = totalFilteredCommits > 0
+                    ? Math.round((c.baselineCommitCount / totalFilteredCommits) * 100)
+                    : 0;
+            });
+        },
+        calculateChurnRate() {
+            if (!this.detailedCommitsLoaded) return;
+
+            this.contributors.forEach(c => {
+                c.totalAdditions = 0;
+                c.totalDeletions = 0;
+            });
+
+            this.filteredCommits.forEach(commit => {
+                const login = commit.author?.login;
+                if (!login) return;
+
+                const contributor = this.contributors.find(c => c.login === login);
+                if (!contributor) return;
+
+                contributor.totalAdditions += commit.stats.additions;
+                contributor.totalDeletions += Math.abs(commit.stats.deletions);
+            });
+
+            this.contributors.forEach(c => {
+                const total = c.totalAdditions + c.totalDeletions;
+                c.churnRate = total > 0 ? (c.totalDeletions / total) : 0;
+            });
+        },
+        calculateFilesTouched() {
+            this.contributors.forEach(c => {
+                c.touchedFilesSet = new Set();
+            });
+
+            this.filteredCommits.forEach(commit => {
+                const login = commit.author?.login;
+                const files = commit.files || commit.stats?.files; // fallback ha még nem jött meg részletes adat
+                if (!login || !Array.isArray(files)) return;
+
+                const contributor = this.contributors.find(c => c.login === login);
+                if (!contributor) return;
+
+                files.forEach(filename => {
+                    contributor.touchedFilesSet.add(filename);
+                });
+            });
+
+            this.contributors.forEach(c => {
+                c.filesTouched = c.touchedFilesSet.size;
             });
         },
         toggleContributorVisibility(login) {
@@ -836,7 +1038,9 @@ export default {
     },
     watch: {
         baseline(newVal) {
-            this.calculateFilteredContributorStats();
+            this.calculateChurnRate();
+            this.calculateCommitData();
+            this.calculateFilesTouched();
             this.chartKey++;
             this.linesChartKey++;
         },
@@ -1007,46 +1211,12 @@ export default {
     },
     mounted() {
         this.contributors.forEach(c => {
-            c.activeDays = new Set();
+            c.activeCommitDays = new Set();
+            c.activeIssueDays = new Set();
         });
 
-        this.allCommits.forEach(commit => {
-            const login = commit.author?.login;
-            if (!login) return;
-
-            const date = commit.commit.author.date.substring(0, 10);
-            const commitDate = new Date(date);
-            const start = new Date(this.startDate);
-            const end = new Date(this.endDate);
-
-            if (commitDate >= start && commitDate <= end) {
-                const contributor = this.contributors.find(c => c.login === login);
-                if (contributor) {
-                    contributor.activeDays.add(date);
-                }
-            }
-        });
-
-        this.issues.forEach(issue => {
-            const login = issue.user?.login;
-            if (!login) return;
-
-            const start = new Date(this.startDate);
-            const end = new Date(this.endDate);
-
-            const created = new Date(issue.created_at);
-            const closed = issue.closed_at ? new Date(issue.closed_at) : null;
-
-            const contributor = this.contributors.find(c => c.login === login);
-            if (!contributor) return;
-
-            if (created >= start && created <= end) {
-                contributor.activeDays.add(issue.created_at.substring(0, 10));
-            }
-            if (closed && closed >= start && closed <= end && issue.closed_by?.login === login) {
-                contributor.activeDays.add(issue.closed_at.substring(0, 10));
-            }
-        });
+        this.calculateIssueData();
+        this.calculateCommitData();
     }
 };
 </script>
@@ -1541,6 +1711,12 @@ html, body {
     color: #6b7280;
 }
 
+.stat-divider {
+    border: none;
+    border-top: 1px solid #d1d5db;
+    margin: 0.5rem 0 0.75rem 0;
+}
+
 .contributor-final-score {
     text-align: center;
     font-size: 1rem;
@@ -1915,6 +2091,28 @@ html, body {
     background: #e5e7eb;
 }
 
+.dependency-badge {
+    display: inline-block;
+    margin-top: 4px;
+    padding: 2px 6px;
+    font-size: 10px;
+    border-radius: 4px;
+    background-color: #e5e7eb; /* light gray */
+    color: #374151; /* dark gray */
+}
+.dependency-badge.ai {
+    background-color: #fcd34d;
+    color: #78350f;
+}
+.dependency-badge.details {
+    background-color: #bfdbfe;
+    color: #1e3a8a;
+}
 
+.commit-stats .filecount {
+    margin-left: 0.5rem;
+    color: #6b7280;
+    font-size: 0.85rem;
+}
 
 </style>
