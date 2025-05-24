@@ -115,23 +115,22 @@ export default {
     z-index: 1000;
 }
 
-/* Animation for sliding down */
 .slide-down-enter-active,
 .slide-down-leave-active {
     transform: translateY(-100%);
-    transition: transform 0.5s ease; /* Smooth animation */
+    transition: transform 0.5s ease;
 }
 
 .slide-down-enter-to {
-    transform: translateY(0); /* End in view */
+    transform: translateY(0);
 }
 
 .slide-down-leave-active {
-    transition: transform 0.5s ease; /* Smooth slide out */
+    transition: transform 0.5s ease;
 }
 
 .slide-down-leave-to {
-    transform: translateY(-100%); /* Exit off-screen */
+    transform: translateY(-100%);
 }
 
 .settings-wrapper {
@@ -146,15 +145,14 @@ export default {
 
 .settings-text-container {
     position: relative;
-    width: 200px; /* Fixed width to prevent shifting */
-    height: 30px; /* Fixed height for both texts */
+    width: 200px;
+    height: 30px;
     display: flex;
     align-items: center;
     justify-content: center;
     overflow: hidden;
 }
 
-/* Animation styles */
 .fade-slide-enter-active, .fade-slide-leave-active {
     transition: opacity 0.3s ease, transform 0.3s ease;
 }
@@ -179,11 +177,10 @@ export default {
     user-select: none;
 }
 
-/* Placeholder with fixed height to avoid jumps */
 .card-placeholder {
     position: relative;
     width: 100%;
-    height: 260px; /* Match the height of SettingsCard to reserve space */
+    height: 260px;
     display: flex;
     justify-content: center;
     align-items: flex-start;
@@ -204,7 +201,6 @@ export default {
     z-index: -1;
 }
 
-/* Background stars and circles */
 .background_container {
     position: absolute;
     top: 0;
@@ -214,7 +210,6 @@ export default {
     overflow: hidden;
 }
 
-/* Overlay container for content above the background */
 .overlay {
     position: relative;
     z-index: 1;
@@ -226,7 +221,6 @@ export default {
     padding-top: 120px;
 }
 
-/* Title text with SVG icon replacement */
 .title-text {
     font-size: 3.5rem;
     font-weight: 700;
@@ -244,17 +238,14 @@ export default {
     width: 40px;
     height: 40px;
     margin: 0 5px;
-    /* Adjust width/height for icon size */
 }
 
-/* Körök stílusa */
 .circle {
     position: absolute;
     border-radius: 50%;
     background: rgba(255, 255, 255, 0.1);
 }
 
-/* Kör méretek és pozíciók */
 .circle1 {
     width: 300px;
     height: 300px;

@@ -71,7 +71,7 @@ export default {
     name: "CustomInput",
     data() {
         return {
-            repositoryUrl: '', // Holds the user input
+            repositoryUrl: '',
         };
     },
     methods: {
@@ -89,39 +89,34 @@ export default {
             }
 
             if (this.validateUrl(this.repositoryUrl)) {
-                // Extract owner and repo from the repository URL
                 const { owner, repo } = this.extractOwnerAndRepo(this.repositoryUrl);
 
                 if (owner && repo) {
                     console.log('Valid owner and repo:', owner, repo);
                     console.log('Redirecting to /github/redirect with owner and repo');
 
-                    // Perform a hard redirect to /github/redirect with owner and repo as query parameters
                     window.location.href = `/github/redirect?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}&startDate=${this.dateFrom}&endDate=${this.dateTo}`;
                 } else {
                     this.notificationHandler('Invalid repository URL. Could not extract owner and repo.');
                 }
             } else {
-                // Trigger the parent's notification if URL is invalid
                 this.notificationHandler('Invalid repository URL. Please try again.');
             }
         },
         validateUrl(url) {
-            // Basic validation to check for a valid GitHub repository URL
             const githubRepoPattern = /^https?:\/\/github\.com\/[^\/]+\/[^\/]+$/;
             return githubRepoPattern.test(url);
         },
         extractOwnerAndRepo(url) {
-            // Extract owner and repo from a valid GitHub repository URL using a regex
             const match = url.match(/^https?:\/\/github\.com\/([^\/]+)\/([^\/]+)/);
             if (match && match.length === 3) {
-                return { owner: match[1], repo: match[2].replace(/\.git$/, '') }; // Remove .git if it exists
+                return { owner: match[1], repo: match[2].replace(/\.git$/, '') };
             }
             return { owner: null, repo: null };
         },
     },
     props: {
-        notificationHandler: Function, // Prop to trigger the parent's notification
+        notificationHandler: Function,
         dateFrom: String,
         dateTo: String,
     },
@@ -139,14 +134,12 @@ export default {
     position: absolute;
     overflow: hidden;
     z-index: -1;
-    /* Border Radius */
     border-radius: 12px;
     filter: blur(3px);
 }
 .input {
     background-color: #010201;
     border: none;
-    /* padding:7px; */
     width: 550px;
     height: 56px;
     border-radius: 10px;
@@ -191,11 +184,9 @@ export default {
     left: 5px;
     filter: blur(20px);
     opacity: 0.8;
-    /*animation:leftright 4s ease-in infinite;*/
     transition: all 2s;
 }
 #main:hover > #pink-mask {
-    /*animation: rotate 4s linear infinite;*/
     opacity: 0;
 }
 
@@ -227,7 +218,6 @@ export default {
         #dfa2da,
         rgba(0, 0, 0, 0) 58%
     );
-     /*animation: rotate 4s linear infinite;*/
     transition: all 2s;
 }
 .border {
@@ -257,7 +247,6 @@ export default {
         #cf30aa 60%,
         #1c191c 64%
     );
-    /*animation: rotate 4s 0.1s linear infinite;*/
     transition: all 2s;
 }
 .darkBorderBg {
@@ -403,7 +392,6 @@ export default {
 
     isolation: isolate;
     overflow: hidden;
-    /* Border Radius */
     border-radius: 10px;
     background: linear-gradient(180deg, #161329, black, #1d1b4b);
     border: 1px solid transparent;

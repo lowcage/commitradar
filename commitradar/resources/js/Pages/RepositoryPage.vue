@@ -9,10 +9,6 @@
                         <span class="repo-name">{{ owner }} / {{ repo }}</span>
                     </h1>
                 </div>
-                <div class="token-input-group">
-                    <input v-model="localToken" type="text" placeholder="Enter OpenAI API Key..." class="token-input" />
-                    <button @click="saveToken" class="token-save-button">Save Token</button>
-                </div>
                 <div class="center-section">
                     <div class="date-range-with-buttons">
                         <div class="date-group">
@@ -48,6 +44,10 @@
                             <span :class="detailedCommitsLoaded || commitsEmpty ? 'status-yes' : 'status-no'">
                                 {{ detailedCommitsLoaded || commitsEmpty ? 'Yes' : 'No' }}
                             </span>
+                        </div>
+                        <div class="commit-status">
+                            <span class="label"><span v-if="!aiEvaluationDone">⚠️</span>AI evaluated:</span>
+                            <span :class="aiEvaluationDone ? 'status-yes': 'status-no'">{{ aiEvaluationDone ? 'Yes' : 'No' }}</span>
                         </div>
                     </div>
                 </div>
@@ -212,7 +212,10 @@
                             <div class="contributor-stat-grid">
                                 <!-- Avg. Commit Score -->
                                 <div class="stat-box">
-                                    <div class="stat-value">5.3</div>
+                                    <div class="stat-value">
+                                        <span v-if="aiEvaluationDone">{{ contributor.avgCommitScore }}</span>
+                                        <span v-else>N/A</span>
+                                    </div>
                                     <div class="stat-label">
                                         Avg. Commit Score
                                         <br>
@@ -221,12 +224,12 @@
                                     </div>
                                 </div>
 
+
                                 <!-- % of Recent Commits -->
                                 <div class="stat-box">
                                     <div class="stat-value">{{ contributor.percentRecentCommits }}%</div>
                                     <div class="stat-label">
-                                        % of Recent Commits
-                                        <!-- no data dep, just hint -->
+                                         of Recent Commits
                                         <div class="dependency-badge">Enhanced by Details</div>
                                     </div>
                                 </div>
@@ -256,13 +259,18 @@
 
                                 <!-- Commit Msg Quality -->
                                 <div class="stat-box">
-                                    <div class="stat-value">76%</div>
+                                    <div class="stat-value">
+                                        <span v-if="aiEvaluationDone">{{ contributor.avgMessageScore }}%</span>
+                                        <span v-else>N/A</span>
+                                    </div>
                                     <div class="stat-label">
                                         Commit Msg Quality
                                         <br>
                                         <div class="dependency-badge ai">AI</div>
                                     </div>
                                 </div>
+
+
 
                                 <!-- Churn Rate -->
                                 <div class="stat-box">
@@ -319,7 +327,7 @@
                             Note: Only main contributors are listed here. Some commits might belong to other authors.
                         </p>
                         <p class="info-note">
-                            🧠 <strong>AI</strong> = Requires OpenAI API key and evaluation for scoring . <br>
+                            🧠 <strong>AI</strong> = Requires AI evaluation for scoring. <br>
                             🧾 <strong>Details</strong> = Needs full commit data to calculate accurate metrics.
                         </p>
                         <p v-if="allCommits.length > totalCommits" class="info-note info-warning">
@@ -388,6 +396,14 @@
                                 <span class="deletions">-{{ commit.stats.deletions }}</span>
                                 <span class="filecount">🗂 {{ commit.stats.fileCount || commit.stats.files?.length || 0 }} files</span>
                             </div>
+                            <div v-if="commit.commit_score !== undefined" class="commit-ai-stats">
+                                    <span :style="{ color: getScoreColor(commit.commit_score) }">
+                                         Score: {{ commit.commit_score }}/10
+                                    </span>
+                                    <span :style="{ color: getMessageScoreColor(commit.commit_message_score) }">
+                                        Message: {{ commit.commit_message_score }}%
+                                    </span>
+                            </div>
 
                             <div class="commit-sha">
                                 <a :href="commit.html_url" target="_blank" class="sha-link">
@@ -399,9 +415,16 @@
                 </div>
 
                 <div class="load-commits-details-wrapper">
-                    <button @click="testOpenAI" class="load-button">
-                        Test OpenAI
+                    <button
+                        @click="runAICommitEvaluation"
+                        class="load-button"
+                        :disabled="!detailedCommitsLoaded || aiEvaluationInProgress || aiEvaluationDone"
+                    >
+                        <span v-if="aiEvaluationInProgress">Running AI Evaluation...</span>
+                        <span v-else-if="aiEvaluationDone">AI Evaluation Complete</span>
+                        <span v-else>Run AI Evaluation</span>
                     </button>
+
                     <button
                         @click="loadMoreCommits"
                         :disabled="loadingMore || !hasMoreCommits || allCommitsLoaded"
@@ -482,7 +505,7 @@
                                 'commit-muted': !isIssueInDateRange(issue)
                             }"
                             >
-                            <!-- Fejléc: avatar + login + dátum -->
+
                             <div class="commit-header">
                                 <img
                                     :src="getAvatarForLogin(issue.user?.login)"
@@ -496,7 +519,6 @@
                                 </div>
                             </div>
 
-                            <!-- Cím -->
                             <div class="commit-message">
                                 <a
                                     :href="`https://github.com/${owner}/${repo}/issues/${issue.number}`"
@@ -507,7 +529,6 @@
                                 </a>
                             </div>
 
-                            <!-- Metaadatok -->
                             <div class="commit-meta">
                                 <div>
                                     <strong>Assigned: </strong>
@@ -550,6 +571,12 @@
                             {{ m.open_issues }} open / {{ m.closed_issues }} closed |
                             Due: {{ formatDate(m.due_on) }}
                         </div>
+                        <div class="milestone-progress-bar">
+                            <div
+                                class="milestone-progress-fill"
+                                :style="{ width: calculateMilestoneProgress(m) + '%' }"
+                            ></div>
+                        </div>
                         <p class="milestone-desc">{{ m.description }}</p>
                     </li>
                 </ul>
@@ -566,6 +593,7 @@
 import { Link } from '@inertiajs/vue3';
 import CommitActivityChart from "@/Components/CommitActivityChart.vue";
 import LinesActivityChart from "@/Components/LinesActivityChart.vue";
+import {createTextVNode} from "vue";
 
 
 export default {
@@ -573,10 +601,10 @@ export default {
         return {
             localStartDate: this.startDate,
             localEndDate: this.endDate,
-            detailedCommits: {}, // sha -> { additions, deletions }
+            detailedCommits: {},
             loadingDetailed: false,
             detailedProgress: 0,
-            page: 2, // 1-et már lekértünk backendről
+            page: 2,
             allCommits: [...this.commits],
             loadingMore: false,
             baseline: 10,
@@ -587,7 +615,9 @@ export default {
             showPullRequests: true,
             issueStateFilter: 'all',
             selectedMilestone: null,
-            localToken: this.openai_token || '',
+            aiEvaluationDone: false,
+            aiEvaluationInProgress: false,
+
         };
     },
 
@@ -629,7 +659,6 @@ export default {
         commitsEmpty: Boolean,
         issues: {type:Array, required:true},
         milestones: {type:Array, required:true},
-        openai_token: String
     },
     methods: {
         async loadMoreCommits() {
@@ -705,7 +734,7 @@ export default {
                 const remainingCommits = this.allCommits.filter(c => !this.detailedCommits[c.sha]);
                 const batch = remainingCommits.slice(0, batchSize);
 
-                if (batch.length === 0) break; // vége
+                if (batch.length === 0) break;
 
                 try {
                     const response = await fetch(route('github.commits.details'), {
@@ -731,7 +760,6 @@ export default {
                                 files: commit.files || []
                             };
 
-                            // és frissítjük az allCommits tömbben is, hogy a UI lássa
                             const found = this.allCommits.find(c => c.sha === commit.sha);
                             if (found) {
                                 found.stats = {
@@ -764,57 +792,92 @@ export default {
             this.calculateFilesTouched();
         },
 
-        async saveToken() {
-            try {
-                const response = await fetch(route('github.save.token'), {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                    },
-                    body: JSON.stringify({ openai_token: this.localToken })
-                });
+        async runAICommitEvaluation() {
+            if (!this.detailedCommitsLoaded || this.aiEvaluationDone) return;
 
-                if (response.ok) {
-                    alert("Token saved successfully!");
-                } else {
-                    alert("Failed to save token.");
+            this.aiEvaluationInProgress = true;
+
+            const batches = [];
+            const all = this.allCommits;
+            for (let i = 0; i < all.length; i += 5) {
+                const batch = all.slice(i, i + 5)
+                    .filter(c => c.commit && c.stats && Array.isArray(c.stats.files));
+                if (batch.length > 0) {
+                    batches.push(batch);
                 }
-            } catch (error) {
-                console.error("Error saving token:", error);
-                alert("Error occurred while saving token.");
             }
+
+            for (const batch of batches) {
+                const payload = batch.map(commit => ({
+                    sha: commit.sha,
+                    message: commit.commit.message,
+                    files: commit.stats.files,
+                    additions: commit.stats.additions,
+                    deletions: commit.stats.deletions,
+                }));
+
+                try {
+                    const response = await fetch(route('github.ai.evaluate'), {
+                        method: "POST",
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                        },
+                        body: JSON.stringify({ commits: payload })
+                    });
+
+                    const result = await response.json();
+
+                    result.forEach(entry => {
+                        const target = this.allCommits.find(c => c.sha === entry.sha);
+                        if (target) {
+                            target.commit_score = entry.commit_score;
+                            target.commit_message_score = entry.commit_message_score;
+                        }
+                    });
+                    this.calculateAIAverages();
+                } catch (err) {
+                    console.error("AI Evaluation batch failed:", err);
+                }
+
+                await new Promise(resolve => setTimeout(resolve, 300)); // throttle
+            }
+
+            this.aiEvaluationInProgress = false;
+            this.aiEvaluationDone = true;
         },
+        calculateAIAverages() {
+            this.contributors.forEach(c => {
+                c.avgCommitScore = 0;
+                c.avgMessageScore = 0;
+            });
 
-        async testOpenAI() {
-            try {
-                const response = await fetch("https://api.openai.com/v1/chat/completions", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": `Bearer ${this.localToken}`
-                    },
-                    body: JSON.stringify({
-                        model: "gpt-3.5-turbo",
-                        messages: [
-                            { role: "system", content: "You are a helpful assistant." },
-                            { role: "user", content: "Hello!" }
-                        ]
-                    })
-                });
+            const commitsByLogin = {};
 
-                if (!response.ok) {
-                    const error = await response.json();
-                    console.error("OpenAI error:", error);
-                    return;
+            this.filteredCommits.forEach(commit => {
+                const login = commit.author?.login;
+                if (!login) return;
+
+                if (!commitsByLogin[login]) {
+                    commitsByLogin[login] = [];
                 }
 
-                const result = await response.json();
-                const message = result.choices?.[0]?.message?.content || "No response message.";
-                console.log("OpenAI response:", message);
-            } catch (error) {
-                console.error("Error calling OpenAI:", error);
-            }
+                if (commit.commit_score !== undefined && commit.commit_message_score !== undefined) {
+                    commitsByLogin[login].push(commit);
+                }
+            });
+
+            Object.entries(commitsByLogin).forEach(([login, commits]) => {
+                const contributor = this.contributors.find(c => c.login === login);
+                if (!contributor) return;
+
+                const totalScore = commits.reduce((sum, c) => sum + c.commit_score, 0);
+                const totalMsgScore = commits.reduce((sum, c) => sum + c.commit_message_score, 0);
+                const count = commits.length;
+
+                contributor.avgCommitScore = +(totalScore / count).toFixed(1);
+                contributor.avgMessageScore = +(totalMsgScore / count).toFixed(1);
+            });
         },
 
         formatDate(dateString) {
@@ -956,7 +1019,7 @@ export default {
 
             this.filteredCommits.forEach(commit => {
                 const login = commit.author?.login;
-                const files = commit.files || commit.stats?.files; // fallback ha még nem jött meg részletes adat
+                const files = commit.files || commit.stats?.files;
                 if (!login || !Array.isArray(files)) return;
 
                 const contributor = this.contributors.find(c => c.login === login);
@@ -994,7 +1057,7 @@ export default {
             return `hsl(${hue}, 70%, 55%)`;
         },
         getContributorColor(login) {
-            if (!login) return '#9ca3af'; // szürke fallback
+            if (!login) return '#9ca3af';
             return this.generateColorFromString(login);
         },
         goHome() {
@@ -1030,17 +1093,43 @@ export default {
             const created = new Date(issue.created_at);
             const closed = issue.closed_at ? new Date(issue.closed_at) : null;
             const start = new Date(this.startDate);
+            start.setHours(0, 0, 0, 0);
+
             const end = new Date(this.endDate);
+            end.setHours(23, 59, 59, 999);
 
             return (created >= start && created <= end) ||
                 (closed && closed >= start && closed <= end);
         },
+        getScoreColor(score) {
+            if (score === null || score === undefined) return '#9ca3af';
+            if (score >= 9) return '#16a34a';
+            if (score >= 7) return '#22c55e';
+            if (score >= 5) return '#eab308';
+            if (score >= 3) return '#f97316';
+            return '#dc2626';
+        },
+
+        getMessageScoreColor(percent) {
+            if (percent === null || percent === undefined) return '#9ca3af';
+            if (percent >= 90) return '#16a34a';
+            if (percent >= 75) return '#22c55e';
+            if (percent >= 50) return '#eab308';
+            if (percent >= 25) return '#f97316';
+            return '#dc2626';
+        },
+        calculateMilestoneProgress(milestone) {
+            const total = milestone.open_issues + milestone.closed_issues;
+            return total === 0 ? 0 : Math.round((milestone.closed_issues / total) * 100);
+        },
+
     },
     watch: {
         baseline(newVal) {
             this.calculateChurnRate();
             this.calculateCommitData();
             this.calculateFilesTouched();
+            this.calculateAIAverages();
             this.chartKey++;
             this.linesChartKey++;
         },
@@ -1394,14 +1483,6 @@ html, body {
     justify-content: center;
 }
 
-.contributor-card {
-    display: flex;
-    align-items: center;
-    padding: 1rem;
-    background: white;
-    border-radius: 8px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
 .contributor-name {
     color: #2563eb;
     text-decoration: none;
@@ -1521,35 +1602,6 @@ html, body {
     text-decoration: underline;
 }
 
-.contributor-stats {
-    display: flex;
-    gap: 0.75rem;
-    margin-top: 0.25rem;
-    font-family: monospace;
-    font-size: 0.875rem;
-}
-
-.load-more-container {
-    text-align: center;
-    margin-top: 1.5rem;
-}
-
-.load-more-button {
-    background-color: #2563eb;
-    color: white;
-    border: none;
-    padding: 0.75rem 1.5rem;
-    border-radius: 8px;
-    font-size: 1rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background-color 0.2s;
-}
-
-.load-more-button:hover {
-    background-color: #1e40af;
-}
-
 .contributors-section {
     margin-bottom: 2rem;
 }
@@ -1572,47 +1624,6 @@ html, body {
     font-weight: 600;
 }
 
-.no-more-text {
-    color: #22C55E;
-    font-size: 1rem;
-    font-weight: 600;
-    margin-top: 1rem;
-    padding: 0.5rem 1rem;
-    border-radius: 8px;
-    background: rgba(34, 197, 94, 0.1);
-    display: inline-block;
-}
-
-.load-detailed-container {
-    text-align: center;
-    margin-top: 1rem;
-}
-
-.load-detailed-button {
-    background-color: #2563eb;
-    color: white;
-    padding: 0.75rem 1.5rem;
-    border-radius: 8px;
-    border: none;
-    cursor: pointer;
-    font-weight: 600;
-}
-
-.detailed-progress {
-    margin-top: 1rem;
-    font-size: 1rem;
-    color: white;
-}
-
-.commit-note {
-    margin-bottom: 1rem;
-    color: #eab308;
-    background-color: rgba(234, 179, 8, 0.1);
-    padding: 0.5rem 1rem;
-    border-radius: 8px;
-    font-size: 0.95rem;
-}
-
 .load-button {
     background-color: #2563eb;
     color: white;
@@ -1633,12 +1644,6 @@ html, body {
 .commit-muted {
     opacity: 0.4;
     filter: grayscale(100%);
-}
-
-.lines-total {
-    font-size: 0.875rem;
-    color: #0f172a;
-    font-weight: 500;
 }
 
 .single-stat-row {
@@ -1717,14 +1722,6 @@ html, body {
     margin: 0.5rem 0 0.75rem 0;
 }
 
-.contributor-final-score {
-    text-align: center;
-    font-size: 1rem;
-    font-weight: 600;
-    color: #2563eb;
-    margin-top: 0.25rem;
-}
-
 .commit-header-bar {
     display: flex;
     justify-content: space-between;
@@ -1774,7 +1771,7 @@ html, body {
     display: flex;
     flex-wrap: wrap;
     justify-content: space-between;
-    gap: 1rem; /* kisebb hézag */
+    gap: 1rem;
     margin-top: 2rem;
     margin-bottom: 4rem;
 }
@@ -1783,14 +1780,6 @@ html, body {
     flex: 0 0 47%;
     max-width: 47%;
     box-sizing: border-box;
-}
-
-.demo-load-buttons {
-    display: flex;
-    gap: 1rem;
-    margin-top: 2rem;
-    justify-content: center;
-    flex-wrap: wrap;
 }
 
 .demo-load-buttons button {
@@ -1813,14 +1802,6 @@ html, body {
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-}
-
-.date-range {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 14px;
-    color: #e2e8f0;
 }
 
 .date {
@@ -1856,7 +1837,7 @@ html, body {
     color: #38bdf8;
 }
 
-.date-range, .commit-status {
+.commit-status {
     display: flex;
     align-items: center;
     gap: 5px;
@@ -1883,7 +1864,7 @@ html, body {
 
 .baseline-note {
     font-size: 0.85rem;
-    color: #6b7280; /* gray-500 */
+    color: #6b7280;
 }
 
 .date-range-with-buttons {
@@ -1939,23 +1920,17 @@ html, body {
     border-radius: 50%;
     border: 3px solid;
 }
-
-.issue-body {
-    font-size: 0.9rem;
-    color: #444;
-    margin-bottom: 0.25rem;
-}
 .issue-info p {
     margin: 0.25rem 0;
     font-size: 0.85rem;
 }
 
 .commit-card.commit-closed {
-    border-left: 5px solid #dc2626; /* piros */
+    border-left: 5px solid #dc2626;
 }
 
 .commit-card.commit-open {
-    border-left: 5px solid #22c55e; /* zöld */
+    border-left: 5px solid #22c55e;
 }
 
 .issue-footer {
@@ -2044,29 +2019,6 @@ html, body {
     margin-top: 0.25rem;
 }
 
-.token-input-group {
-    display: flex;
-    gap: 0.5rem;
-    margin-top: 1rem;
-}
-
-.token-input {
-    padding: 0.5rem;
-    border: 1px solid #d1d5db;
-    border-radius: 6px;
-    flex: 1;
-}
-
-.token-save-button {
-    background-color: #2563eb;
-    color: white;
-    padding: 0.5rem 1rem;
-    border-radius: 6px;
-    border: none;
-    font-weight: 600;
-    cursor: pointer;
-}
-
 .contributor-actions {
     position: absolute;
     top: 0.5rem;
@@ -2097,8 +2049,8 @@ html, body {
     padding: 2px 6px;
     font-size: 10px;
     border-radius: 4px;
-    background-color: #e5e7eb; /* light gray */
-    color: #374151; /* dark gray */
+    background-color: #e5e7eb;
+    color: #374151;
 }
 .dependency-badge.ai {
     background-color: #fcd34d;
@@ -2114,5 +2066,29 @@ html, body {
     color: #6b7280;
     font-size: 0.85rem;
 }
+
+.commit-ai-stats {
+    margin-top: 4px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    display: flex;
+    gap: 1rem;
+}
+
+.milestone-progress-bar {
+    height: 8px;
+    width: 100%;
+    background-color: #e5e7eb;
+    border-radius: 4px;
+    margin-top: 6px;
+    overflow: hidden;
+}
+
+.milestone-progress-fill {
+    height: 100%;
+    background-color: #22c55e;
+    transition: width 0.3s ease;
+}
+
 
 </style>

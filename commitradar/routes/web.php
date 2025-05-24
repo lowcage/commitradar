@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Laravel\Socialite\Facades\Socialite;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Config;
+
 
 /*
 |--------------------------------------------------------------------------
@@ -41,7 +43,6 @@ Route::get('/github/redirect', function (Illuminate\Http\Request $request) {
     }
 
     if (!$token) {
-        // Store owner and repo in session for use after authentication
         session([
             'owner' => $owner,
             'repo' => $repo,
@@ -64,25 +65,21 @@ Route::get('/github/callback', function () {
         $user = Socialite::driver('github')->user();
         session(['github_token' => $user->token]);
 
-        // Retrieve owner and repo from session
         $owner = session('owner');
         $repo = session('repo');
         $startDate = session('startDate');
         $endDate = session('endDate');
 
-        // Ensure owner and repo exist
         if (!$owner || !$repo) {
             return redirect('/')
                 ->with('auth_error', 'Missing owner or repository name after authentication.');
         }
 
-        // Clear owner and repo from session
         session()->forget(['owner', 'repo', 'startDate', 'endDate']);
 
         // Redirect to the github.repository route with the owner and repo
         return redirect()->route('github.repository', compact('owner', 'repo', 'startDate', 'endDate'));
     } catch (\Exception $e) {
-        // Handle authentication failure
         return redirect('/')
             ->with('auth_error', 'Authentication failed or was canceled.');
     }
@@ -132,7 +129,6 @@ Route::match(['GET', 'POST'], '/github/repository', function (Illuminate\Http\Re
     }
     $contributors = $contributorsResponse->json();
 
-    // Initialize stats, but we won't aggregate additions/deletions now
     foreach ($contributors as &$contributor) {
         $contributor['total_additions'] = 0;
         $contributor['total_deletions'] = 0;
@@ -158,7 +154,6 @@ Route::match(['GET', 'POST'], '/github/repository', function (Illuminate\Http\Re
         $hasMoreCommits = count($commitsRaw) === 50;
 
 
-        // From the basic commit list we extract the needed data
         foreach ($commitsRaw as $commit) {
             $commits[] = [
                 'sha' => $commit['sha'],
@@ -174,7 +169,6 @@ Route::match(['GET', 'POST'], '/github/repository', function (Illuminate\Http\Re
                     'login' => $commit['author']['login'],
                     'avatar_url' => $commit['author']['avatar_url'],
                 ] : null,
-                // We skip additions/deletions stats because that needs the /commits/:sha call!
             ];
         }
     }
@@ -204,11 +198,9 @@ Route::match(['GET', 'POST'], '/github/repository', function (Illuminate\Http\Re
 
         $pageIssues = $issuesResponse->json();
 
-        // Stop if no more issues
         if (count($pageIssues) === 0) break;
 
         foreach ($pageIssues as $issue) {
-            // Skip pull requests if needed (if you want only pure issues)
             $isPR = isset($issue['pull_request']);
 
             $issues[] = [
@@ -316,17 +308,57 @@ Route::post('/github/commits/details', function (Request $request) {
     return response()->json($results);
 })->name('github.commits.details');
 
+Route::post('/api/openai/commit-analysis', function (Request $request) {
+    $commits = $request->input('commits');
 
+    if (!is_array($commits) || count($commits) === 0 || count($commits) > 5) {
+        return response()->json(['error' => 'Invalid or missing commits array'], 400);
+    }
 
-Route::post('/github/save-token', function (Illuminate\Http\Request $request) {
-    $request->validate([
-        'openai_token' => 'required|string',
+    $apiKey = env('OPENAI_API_KEY');
+    $model = env('OPENAI_MODEL', 'gpt-4o'); // fallback: gpt-4o
+    $promptTemplate = Config::get('openai.commit_analysis_prompt');
+
+    if (!$apiKey || !$promptTemplate) {
+        return response()->json(['error' => 'Missing configuration'], 500);
+    }
+
+    $finalPrompt = $promptTemplate . "\n\nInput:\n" . json_encode($commits, JSON_PRETTY_PRINT);
+
+    $response = Http::withHeaders([
+        'Authorization' => 'Bearer ' . $apiKey,
+        'Content-Type' => 'application/json',
+    ])->post('https://api.openai.com/v1/chat/completions', [
+        'model' => $model,
+        'messages' => [
+            ['role' => 'system', 'content' => 'You are a commit quality evaluator.'],
+            ['role' => 'user', 'content' => $finalPrompt],
+        ],
+        'temperature' => 0.2,
     ]);
-    session(['openai_token' => $request->input('openai_token')]);
-    return response()->json(['status' => 'ok']);
-})->name('github.save.token');
+
+    if ($response->failed()) {
+        return response()->json([
+            'error' => 'OpenAI API call failed',
+            'details' => $response->json(),
+        ], 500);
+    }
+
+    $output = $response->json();
+    $text = $output['choices'][0]['message']['content'] ?? '';
+    $text = preg_replace('/^```json\s*(.*?)\s*```$/s', '$1', trim($text));
 
 
-//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
+    $parsed = json_decode($text, true);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        return response()->json([
+            'error' => 'Failed to parse JSON from OpenAI response',
+            'raw' => $text,
+        ], 500);
+    }
+
+    return response()->json($parsed);
+})->name('github.ai.evaluate');
+
 
 require __DIR__.'/auth.php';
