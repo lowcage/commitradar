@@ -272,7 +272,6 @@ Route::match(['GET', 'POST'], '/github/repository', function (Illuminate\Http\Re
         'endDate' => $endDate,
         'issues' => $issues,
         'milestones' => $milestones,
-        'openai_token' => session('openai_token', '')
     ]);
 })->name('github.repository');
 
